@@ -6,10 +6,11 @@
 """The City Manager's guide exporter: a simple plan JSON to and from the City Planning Draft mod (pdx 155935, by
 nooolan; written against its version 1.2.2, schema 1.0). That mod is the build overlay: its plans are drawn over the city.
 
-  export PLAN.json [--map-id NAME] [--terrain terrain.json] [--name FILE] [--out-dir DIR]
+  export PLAN.json [--map-id NAME] [--terrain city.json] [--name FILE] [--out-dir DIR]
       Writes ModsData/CityPlanningDraft/Exports/<FILE>.cityplan.json. In game, the user opens the planner panel
       and presses Import, which loads the NEWEST file in Exports. Import replaces the city's plan document
-      (undo with Ctrl+Z; the mod also keeps snapshots).
+      (undo with Ctrl+Z; the mod also keeps snapshots). --terrain gives the points their ground height: the City
+      Manager mod's snapshot (city.json or city-start.json), or a terrain file (resolution, cellSize, worldMin, heights).
   read CITY_OR_MAPID [--plan NAME_OR_ID] [--out plan_edited.json]
       Reads <root>/<city>/planning.cityplan.json (what the user edited and saved in game) back into the simple
       format, so the build stage can use the approved geometry.
@@ -38,12 +39,14 @@ Naming (the Mayor's convention since 2026-11-24; export warns when it's broken):
               Now (this session), Next, Later (parked or ideas), Base (the long-term picture), Done (one round, then dropped)
   The topic uses the journal's and the briefing's words. Move older exports to Exports/old/ after an export.
 """
+import base64
 import datetime
 import glob
 import re
 import json
 import math
 import os
+import struct
 import sys
 import uuid
 from pathlib import Path
@@ -73,12 +76,20 @@ def newest_map_id():
 
 
 def height_fn(terrain_path):
+    """Ground height at (x, z) from --terrain: the City Manager mod's snapshot (city.json, city-start.json), or a terrain
+    file with resolution, cellSize, worldMin and a list of heights."""
     if not terrain_path:
         return lambda x, z: 100.0
-    with open(terrain_path, encoding="utf-8") as f:
+    with open(terrain_path, encoding="utf-8-sig") as f:
         t = json.load(f)
-    R, c, m0 = t["resolution"], t["cellSize"], t["worldMin"]
-    H = t["heights"]
+    if isinstance(t.get("terrain"), dict):   # a snapshot: base64 of little-endian 16-bit decimetres, row by row
+        g = t["terrain"]
+        R, c, m0 = int(g["size"]), float(g["cell"]), float(g["origin"])
+        raw = base64.b64decode(g["heights"])
+        H = [v / 10 for v in struct.unpack(f"<{R * R}H", raw[:2 * R * R])]
+    else:
+        R, c, m0 = t["resolution"], t["cellSize"], t["worldMin"]
+        H = t["heights"]
 
     def h(x, z):
         i = min(max(int((z - m0) / c), 0), R - 1); j = min(max(int((x - m0) / c), 0), R - 1)

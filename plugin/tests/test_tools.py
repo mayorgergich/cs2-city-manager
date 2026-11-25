@@ -617,6 +617,40 @@ class FirstRun(unittest.TestCase):
         aliases = json.loads((self.e.root / "cities.json").read_text(encoding="utf-8"))["aliases"]
         self.assertEqual(aliases['São "Paulo"'], "sao-paulo")           # the mod finds it by the city's real name
 
+    def test_founding_sets_a_city_up_before_it_exists(self):
+        self.jp("init", "Riverton")
+        code, out = self.jp("init", "Little Harbour", "--founding")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.cities()["active"], "little-harbour")      # the new city, quietly
+        j = json.loads((self.e.root / "little-harbour/journal.json").read_text(encoding="utf-8"))
+        self.assertEqual(j["briefing"]["title"], "Founding day")
+        self.assertIn("Little Harbour stands", j["briefing"]["summary"])
+        self.assertEqual([t["id"] for t in j["briefing"]["tasks"]], ["pause", "look", "window", "wrapup"])
+        self.assertNotIn("Claude the city", json.dumps(j))                # nothing in it waits for Claude
+        self.assertIn("starts a New Game named exactly 'Little Harbour'", out)
+        code, out = self.jp("init", "--founding")
+        self.assertEqual(code, 2)
+        self.assertIn("needs the new city's name", out)
+
+    def test_doctor_says_whether_uv_is_needed(self):
+        code, out = self.jp("doctor")
+        self.assertIn("uv: ", out)
+        self.assertIn("Map pictures for the founding chat", out)
+
+    def test_a_new_city_can_become_the_active_one(self):
+        self.jp("init", "Riverton")
+        code, out = self.jp("init", "Newport", "--active")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.cities()["active"], "newport")
+        self.assertIn("(active: newport)", out)
+        self.assertEqual(self.cities()["cities"]["riverton"]["name"], "Riverton")   # the other city is kept
+        code, out = self.jp("activate", "riverton")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.cities()["active"], "riverton")
+        code, out = self.jp("activate", "nowhere")
+        self.assertEqual(code, 1)
+        self.assertIn("not in", out)
+
     def test_init_adopts_a_journal_started_in_game_and_keeps_the_mayors_notes(self):
         (self.e.root / "riverton").mkdir()
         (self.e.root / "riverton/journal.json").write_text('{"format": 1, "city": "Riverton"}', encoding="utf-8")

@@ -1,0 +1,230 @@
+"""Tests for plan.py, the plan checker and drawer, on the made-up map (made_up_map.py): the owned tiles are the middle one
+and the one west of it; Ring Highway runs west to east at z 300 (on a bridge from x -400 to 0); Entry Highway ends at
+z 150 where Main Street carries on; a railway runs north to south at x 250; a river in the west, a 30% hill in the east,
+a 10% rise in the north."""
+import contextlib
+import io
+import json
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / "skills/city-manager/scripts"))
+import made_up_map as mm  # noqa: E402
+import cityplan  # noqa: E402
+import plan  # noqa: E402
+
+RING = {"name": "Ring Highway", "class": "Highway", "existing": True, "points": [[-895, 300], [895, 300]]}
+
+
+def road(name, cls, pts, **kw):
+    return dict(name=name, **{"class": cls}, points=pts, **kw)
+
+
+def plans(*items):
+    return list(items)
+
+
+def problems(results, level=None, item=None):
+    out = []
+    for r in results:
+        for p in r["problems"]:
+            if (level is None or p["level"] == level) and (item is None or p["item"] == item):
+                out.append(p)
+    return out
+
+
+class Checks(unittest.TestCase):
+    def check(self, *ps, snap=None, name=None):
+        chk = plan.Check(snap or mm.snapshot(), list(ps), name)
+        chk.run()
+        return chk
+
+    def test_a_clean_first_phase(self):
+        chk = self.check({"name": "Now · First streets",
+                          "roads": [road("1 Main Avenue", "Arterial", [[-150, -100], [150, -100]], piece="Four-Lane Road"),
+                                    road("2 Side Street", "Local", [[-300, -150], [-300, 150]], piece="Two-Lane Road"),
+                                    road("3 East Street", "Collector", [[0, 150], [150, 150]], piece="Two-Lane Road")],
+                          "areas": [{"name": "4 Downtown", "type": "Commercial", "polygon": [[-150, -50], [150, -50], [150, 100], [-150, 100]]}],
+                          "junctions": [{"name": "5 Corner", "type": "Roundabout", "position": [0, -100], "road_a": "1 Main Avenue",
+                                         "road_b": "2 Side Street", "piece": "a small roundabout"}]})
+        self.assertEqual(problems(chk.results), [], "3 East Street carries on from where Entry Highway ends: no at-grade join")
+        self.assertEqual(chk.errors(), 0)
+        self.assertEqual(chk.results[0]["km"], {"Arterial": 0.3, "Local": 0.3, "Collector": 0.15})
+
+    def test_crossing_a_highway_at_grade(self):
+        chk = self.check({"name": "Base · Roads", "roads": [road("Cross", "Collector", [[100, 100], [100, 500]])], "areas": [], "junctions": []})
+        errs = problems(chk.results, "error", "Cross")
+        self.assertEqual(len(errs), 1)
+        self.assertIn("crosses Ring Highway at grade", errs[0]["text"])
+        self.assertEqual(errs[0]["at"], [100, 300])
+
+    def test_an_underpass_or_a_tunnel_makes_it_fine(self):
+        under = {"name": "Base · Roads", "roads": [RING, road("Cross", "Collector", [[100, 100], [100, 500]])], "areas": [],
+                 "junctions": [{"name": "Under", "type": "Underpass", "position": [100, 300], "road_a": "Cross", "road_b": "Ring Highway"}]}
+        self.assertEqual(problems(self.check(under).results, "error"), [])
+        tunnel = {"name": "Base · Roads", "roads": [road("Cross", "Collector", [[100, 100], [100, 500]], tunnel=True)], "areas": [], "junctions": []}
+        self.assertEqual(problems(self.check(tunnel).results, "error"), [])
+
+    def test_passing_under_a_highway_bridge(self):
+        chk = self.check({"name": "Base · Roads", "roads": [road("Under the bridge", "Collector", [[-200, 100], [-200, 500]])], "areas": [], "junctions": []})
+        self.assertEqual(problems(chk.results, "error"), [])
+        self.assertTrue(any("on a bridge or in a tunnel" in p["text"] for p in problems(chk.results, "note")))
+
+    def test_joining_a_highway_at_grade(self):
+        chk = self.check({"name": "Base · Roads", "roads": [road("Spur", "Collector", [[200, 100], [200, 300]])], "areas": [], "junctions": []})
+        self.assertTrue(any("joins Ring Highway at grade" in p["text"] for p in problems(chk.results, "error", "Spur")))
+        ramp = self.check({"name": "Base · Roads", "roads": [road("Ramp", "Highway", [[200, 100], [200, 300]], piece="One-Lane One-Way Highway")],
+                           "areas": [], "junctions": []})
+        self.assertEqual(problems(ramp.results, "error"), [], "a ramp (a highway piece) joins a highway")
+
+    def test_crossing_the_railway(self):
+        chk = self.check({"name": "Base · Roads", "roads": [road("Rail street", "Local", [[150, -300], [350, -300]])], "areas": [], "junctions": []})
+        self.assertTrue(any("railway at grade" in p["text"] for p in problems(chk.results, "error", "Rail street")))
+        bridge = self.check({"name": "Base · Roads", "roads": [road("Rail street", "Local", [[150, -300], [350, -300]], bridge=True)], "areas": [], "junctions": []})
+        self.assertEqual(problems(bridge.results, "error"), [])
+
+    def test_steep_ground(self):
+        chk = self.check({"name": "Base · Roads", "roads": [road("Hill climb", "Arterial", [[500, 0], [850, 0]]),
+                                                            road("North rise", "Local", [[-100, 620], [-100, 880]])], "areas": [], "junctions": []})
+        hill = problems(chk.results, "error", "Hill climb")
+        self.assertTrue(hill and "refuses roads over 20%" in hill[0]["text"])
+        rise = problems(chk.results, "warn", "North rise")
+        self.assertTrue(rise and "under 8%" in rise[0]["text"], "a 10% street that gets zoned")
+        arterial = self.check({"name": "Base · Roads", "roads": [road("North rise", "Arterial", [[-100, 620], [-100, 880]])], "areas": [], "junctions": []})
+        self.assertEqual([p for p in problems(arterial.results) if "steep" in p["text"]], [], "8% is for zoned streets")
+
+    def test_water_wants_a_bridge(self):
+        chk = self.check({"name": "Base · Roads", "roads": [road("River road", "Arterial", [[-650, -50], [-450, -50]])], "areas": [], "junctions": []})
+        self.assertTrue(any("of water" in p["text"] for p in problems(chk.results, "warn", "River road")))
+        bridge = self.check({"name": "Base · Roads", "roads": [road("River road", "Arterial", [[-650, -50], [-450, -50]], bridge=True)],
+                             "areas": [], "junctions": []})
+        self.assertEqual([p for p in problems(bridge.results) if "water" in p["text"]], [])
+
+    def test_now_and_next_must_be_on_owned_tiles(self):
+        south = road("3 South Road", "Collector", [[0, -100], [0, -400]], piece="Two-Lane Road")
+        now = self.check({"name": "Now · Streets", "roads": [south], "areas": [], "junctions": []})
+        self.assertTrue(any("doesn't own" in p["text"] for p in problems(now.results, "error", "3 South Road")))
+        base = self.check({"name": "Base · Roads", "roads": [south], "areas": [], "junctions": []})
+        self.assertEqual(problems(base.results, "error"), [])
+        self.assertTrue(any("needs 1 more tile" in p["text"] for p in problems(base.results, "note")))
+        everything = {(r, c) for r in range(5) for c in range(5)}
+        owned = self.check({"name": "Now · Streets", "roads": [south], "areas": [], "junctions": []}, snap=mm.snapshot(owned=everything))
+        self.assertEqual(problems(owned.results, "error"), [])
+
+    def test_pieces_from_the_catalogue(self):
+        chk = self.check({"name": "Now · Streets", "roads": [
+            road("1 Big Road", "Arterial", [[-150, -100], [150, -100]], piece="Six-Lane Road"),
+            road("2 Odd Road", "Local", [[-150, -150], [150, -150]], piece="Made Up Road"),
+            road("3 No Piece", "Local", [[-150, 0], [150, 0]])], "areas": [],
+            "junctions": [{"name": "4 Trumpet", "type": "Interchange", "position": [0, 100], "road_a": "1 Big Road", "road_b": "3 No Piece",
+                           "piece": "Trumpet Intersection"}]})
+        self.assertIn("locked until milestone 6", problems(chk.results, "error", "1 Big Road")[0]["text"])
+        self.assertIn("isn't in the snapshot's catalogue", problems(chk.results, "warn", "2 Odd Road")[0]["text"])
+        self.assertIn("no road piece named", problems(chk.results, "warn", "3 No Piece")[0]["text"])
+        self.assertIn("locked until milestone 8", problems(chk.results, "error", "4 Trumpet")[0]["text"])
+        by_prefab = self.check({"name": "Now · Streets", "roads": [road("1 Main", "Arterial", [[-150, -100], [150, -100]], prefab="Medium Road")],
+                                "areas": [], "junctions": []})
+        self.assertEqual(problems(by_prefab.results), [], "the game's own prefab name works too")
+
+    def test_highways_in_the_plan(self):
+        new_hw = road("New Highway", "Highway", [[-400, -700], [200, -700]])   # stops short of the railway at x 250
+        feeder = road("Feeder", "Collector", [[0, -800], [0, -700]])
+        normal = self.check({"name": "Base · Roads", "roads": [new_hw, feeder], "areas": [],
+                             "junctions": [{"name": "Flat", "type": "Normal", "position": [0, -700], "road_a": "New Highway", "road_b": "Feeder"}]})
+        self.assertTrue(any("traffic lights or a roundabout on the highway" in p["text"] for p in problems(normal.results, "error", "Flat")))
+        inter = self.check({"name": "Base · Roads", "roads": [new_hw, feeder], "areas": [],
+                            "junctions": [{"name": "Exit", "type": "Interchange", "position": [0, -700], "road_a": "New Highway", "road_b": "Feeder"}]})
+        self.assertEqual(problems(inter.results, "error"), [])
+        ramp = self.check({"name": "Base · Roads", "roads": [road("Ramp east", "Highway", [[-400, -700], [0, -700]]), feeder], "areas": [],
+                           "junctions": [{"name": "Ramp end", "type": "Normal", "position": [0, -700], "road_a": "Ramp east", "road_b": "Feeder"}]})
+        self.assertEqual(problems(ramp.results, "error"), [], "a ramp ends on a street with an ordinary junction")
+        cross = self.check({"name": "Base · Roads", "roads": [new_hw, road("Cross street", "Collector", [[0, -900], [0, -500]])], "areas": [], "junctions": []})
+        self.assertTrue(any("at grade" in p["text"] for p in problems(cross.results, "error", "Cross street")))
+
+    def test_what_the_exporter_would_refuse_and_naming(self):
+        chk = self.check({"name": "Roads", "roads": [], "junctions": [],
+                          "areas": [{"name": "Bow tie", "type": "Custom", "polygon": [[0, 0], [100, 100], [100, 0], [0, 100]]}]})
+        self.assertTrue(any("export would refuse" in p["text"] for p in problems(chk.results, "error")))
+        self.assertTrue(any("<Status> · <Topic>" in w for w in chk.naming))
+        self.assertFalse(any(w.startswith("file ") for w in chk.naming), "no file name given, so no file warning")
+        named = self.check({"name": "Base · Roads", "roads": [], "areas": [], "junctions": []}, name="Riverton")
+        self.assertTrue(any(w.startswith("file ") for w in named.naming))
+
+    def test_junctions_close_together_on_an_arterial(self):
+        chk = self.check({"name": "Now · Streets", "roads": [
+            road("1 Main Avenue", "Arterial", [[-150, -100], [150, -100]], piece="Four-Lane Road"),
+            road("2 West lane", "Local", [[-100, -100], [-100, 100]], piece="Two-Lane Road"),
+            road("3 East lane", "Local", [[-40, -100], [-40, 100]], piece="Two-Lane Road")], "areas": [], "junctions": []})
+        notes = problems(chk.results, "note", "1 Main Avenue")
+        self.assertTrue(notes and "60 m apart" in notes[0]["text"])
+
+
+class Drawing(unittest.TestCase):
+    PLAN = {"plans": [
+        {"name": "Now · First streets", "roads": [road("1 Main Avenue", "Arterial", [[-150, -100], [150, -100]], piece="Four-Lane Road"),
+                                                  road("2 Under", "Collector", [[100, 100], [100, 500]], piece="Two-Lane Road", tunnel=True)],
+         "areas": [{"name": "3 Downtown", "type": "Commercial", "polygon": [[-150, -50], [150, -50], [150, 100], [-150, 100]]}],
+         "junctions": [{"name": "4 Corner", "type": "Roundabout", "position": [0, -100], "road_a": "1 Main Avenue", "road_b": "2 Under"}]},
+        {"name": "Base · Districts", "roads": [], "junctions": [],
+         "areas": [{"name": "Farm belt", "type": "Custom", "fill": "#DAA520", "polygon": [[-850, -850], [-500, -850], [-500, -500], [-850, -500]]}]},
+    ]}
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="cm-plan-"))
+        self.snap_path = self.base / "city.json"
+        self.snap_path.write_text(json.dumps(mm.snapshot(owned=mm.OWNED | {(3, 2)})), encoding="utf-8")   # and the tile north of the middle
+        self.plan_path = self.base / "plan.json"
+        self.plan_path.write_text(json.dumps(self.PLAN, ensure_ascii=False), encoding="utf-8")
+
+    def tearDown(self):
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def run_main(self, *args):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = plan.main(["plan.py", *map(str, args)])
+        return code, out.getvalue()
+
+    def test_draws_every_view(self):
+        from PIL import Image
+        for i, extra in enumerate([[], ["--view", "map"], ["--view", "start"], ["--around", "2 Under"], ["--only", "Base · Districts"]]):
+            out = self.base / f"p{i}.png"
+            code, text = self.run_main("draw", self.plan_path, self.snap_path, "--out", out, *extra)
+            self.assertEqual(code, 0, text)
+            with Image.open(out) as im:
+                self.assertEqual(im.format, "PNG")
+                self.assertLessEqual(im.width, 1600)
+
+    def test_unknown_item_or_plan(self):
+        with self.assertRaises(SystemExit):
+            self.run_main("draw", self.plan_path, self.snap_path, "--out", self.base / "x.png", "--around", "Nowhere")
+        with self.assertRaises(SystemExit):
+            self.run_main("draw", self.plan_path, self.snap_path, "--out", self.base / "x.png", "--only", "Now · Nothing")
+
+    def test_check_command_and_exit_status(self):
+        code, text = self.run_main("check", self.plan_path, self.snap_path, "--name", "Riverton 1", "--json", self.base / "check.json")
+        self.assertEqual(code, 0, text)
+        self.assertIn("## Now · First streets", text)
+        self.assertIn("0 to fix", text)
+        data = json.loads((self.base / "check.json").read_text(encoding="utf-8"))
+        self.assertEqual(data["errors"], 0)
+        bad = json.loads(json.dumps(self.PLAN))
+        bad["plans"][0]["roads"][1].pop("tunnel")
+        self.plan_path.write_text(json.dumps(bad), encoding="utf-8")
+        code, text = self.run_main("check", self.plan_path, self.snap_path)
+        self.assertEqual(code, 1)
+        self.assertIn("✗ **2 Under**: crosses Ring Highway at grade", text)
+
+    def test_exporter_takes_ground_heights_from_the_snapshot(self):
+        h = cityplan.height_fn(str(self.snap_path))
+        self.assertAlmostEqual(h(0, 0), 50.0, places=1)
+        self.assertAlmostEqual(h(700, 0), mm.ground(700, 28), delta=0.2)
+
+
+if __name__ == "__main__":
+    unittest.main()

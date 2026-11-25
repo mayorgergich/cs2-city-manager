@@ -14,8 +14,8 @@
 | `mod/ui/CityManager.mjs` | The panel: a hand-written UI module (no bundler). React and `cs2/*` come from the game |
 | `mod/tests/` | The mod's tests: C# (`CityManager.Tests`) and the panel (`ui.test.mjs`) |
 | `plugin/` | The Claude Code plugin (`.claude-plugin/plugin.json`); the repo root's `.claude-plugin/marketplace.json` lists it |
-| `plugin/skills/city-manager/` | The City Manager skill: `SKILL.md`, `references/`, and `scripts/journal.py` (journals), `scripts/city.py` (reads the city snapshot), `scripts/founding.py` (a new city's maps, playset and New Game screen) and `scripts/cityplan.py` (guides for City Planning Draft) |
-| `plugin/tests/` | The scripts' tests, and `cityplan_format_1.2.2.json` (City Planning Draft's own format) |
+| `plugin/skills/city-manager/` | The City Manager skill: `SKILL.md`, `references/`, and `scripts/journal.py` (journals), `scripts/city.py` (reads the city snapshot), `scripts/founding.py` (a new city's maps, playset and New Game screen), `scripts/cityplan.py` (guides for City Planning Draft), `scripts/survey.py` (surveys the map from a snapshot, with pictures) and `scripts/plan.py` (checks a plan against the snapshot and draws it) |
+| `plugin/tests/` | The scripts' tests, `cityplan_format_1.2.2.json` (City Planning Draft's own format) and `made_up_map.py` (a small made-up snapshot for the survey and plan tests) |
 | `format/` | The journal format and `merge_cases.json`, the merge rule's cases, run by both the panel's and the plugin's tests |
 | `docs/` | This file, how the mod works (`the-mod.md`), the Windows checklist and a sample journal |
 | `art/` | The cones: the master artwork for the icons |
@@ -87,7 +87,16 @@ builds happen on the maintainer's machine. The in-game checks on Windows are man
     a map), resources rated against the other maps, one map's needs and playset state, the playset check, the
     founding answers' check, and the New Game steps;
   - `city.py` on a made-up city: the summary, changes across sessions matched by where roads are, streets, problems,
-    services, the catalogue, and older snapshots without the newer parts.
+    services, the catalogue, and older snapshots without the newer parts;
+  - `survey.py` on a made-up map (`made_up_map.py`: a river, a steep hill, a highway with a bridge and a lane crossing
+    it at grade, a railway, 5 × 5 tiles with two owned): the tiles to buy next (sides, not corners), slopes, which way
+    the river flows, connections off the map, where a highway ends or meets a street at grade, a map where every tile is
+    owned, words without coordinates, the pictures' sizes, older snapshots and one without terrain;
+  - `plan.py` on the same map: crossings and joins at grade (highways, the railway), underpasses, tunnels, bridges and a
+    highway already on a bridge, steep ground and water, Now and Next pieces on tiles the city doesn't own, pieces from
+    the catalogue (locked, unknown, missing), highways inside the plan, what the exporter would refuse, naming,
+    junctions close together, every drawing view, the exit status; and `cityplan.py export --terrain` reading ground
+    heights from a snapshot.
 - **In game:** before installing a build, the maintainer runs a suite of checks inside a hidden copy of the game (it
   needs a private test harness, so it isn't in this repo). It checks:
   - the first start moving `ModsData/CityJournal` to `ModsData/CityManager`;
@@ -110,7 +119,7 @@ builds happen on the maintainer's machine. The in-game checks on Windows are man
   - the key registration;
   - the mod's and the game's UI logs.
 
-- **Counts as of 0.8.0:** 92 mod store (on Windows run twice: .NET 10 and .NET Framework 4.8), 28 panel, 66 plugin scripts (one Windows-only), 77 in game. CI runs the offline ones on Linux and Windows, from a temporary folder named "Zoë Ørsted". The second-city check fails on 0.3.0 (checked 2026-11-24: it linked the second city to the first one's journal).
+- **Counts as of 0.8.0:** 92 mod store (on Windows run twice: .NET 10 and .NET Framework 4.8), 28 panel, 101 plugin scripts (one Windows-only), 77 in game. CI runs the offline ones on Linux and Windows, from a temporary folder named "Zoë Ørsted". The second-city check fails on 0.3.0 (checked 2026-11-24: it linked the second city to the first one's journal).
 - **Windows file handling** (no tester yet, so in CI): saving while another program holds the file (shared for writing,
   or only for reading), `journal.py` replacing `journal.json` while the game reads it, and paths with accents. The C#
   tests also run on .NET Framework 4.8, which, like the game's Mono on Windows, saves through Windows' own functions.

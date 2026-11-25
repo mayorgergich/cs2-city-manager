@@ -16,7 +16,28 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "skills/city-manager/scripts"
 FOUNDING = SCRIPTS / "founding.py"
 
 
-def map_package(path, name, **meta):
+def text7(t):
+    b = t.encode("utf-8")
+    n, out = len(b), bytearray()
+    while True:
+        out.append((n & 0x7F) | (0x80 if n > 0x7F else 0))
+        n >>= 7
+        if not n:
+            return bytes(out) + b
+
+
+def loc(pairs):
+    """A .loc file as map packages carry it: version, three language names, a count, then key and text pairs."""
+    return (1).to_bytes(2, "little") + text7("English") + text7("en-US") + text7("English") + len(pairs).to_bytes(4, "little") + \
+        b"".join(text7(k) + text7(v) for k, v in pairs)
+
+
+def texture(w, h, rgba):
+    """A raw (format 4) texture: a 14-byte header, then the rows bottom-up."""
+    return bytes([4, 0]) + w.to_bytes(2, "little") + h.to_bytes(2, "little") + bytes(8) + bytes(rgba) * (w * h)
+
+
+def map_package(path, name, extra=None, **meta):
     path.parent.mkdir(parents=True, exist_ok=True)
     m = {"displayName": name, "theme": "European", "area": 200e6, "buildableLand": 100e6, "temperatureRange": {"min": 5, "max": 25},
          "surfaceWaterAvailability": 0, "groundWaterAvailability": 1e7, "resources": {"fertile": 30e6, "forest": 100e6, "oil": 0, "ore": 10e6, "fish": 0},
@@ -25,6 +46,8 @@ def map_package(path, name, **meta):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
         z.writestr(f"{name}.MapMetadata", json.dumps(m))
         z.writestr(f"{name}.MapData", b"\0" * 16)
+        for entry, data in (extra or {}).items():
+            z.writestr(entry, data)
 
 
 class Founding(unittest.TestCase):
@@ -39,7 +62,10 @@ class Founding(unittest.TestCase):
                     connections={"road": True, "train": False, "ship": True, "air": True, "electricity": True, "water": False})
         map_package(self.user / ".cache/Mods/pdx_mods/5001_2/Green Valley.cok", "Green Valley", contentPrerequisites=["Mod:6001"],
                     resources={"fertile": 30e6, "forest": 100e6, "oil": 0, "ore": 10e6, "fish": 10e6})
-        map_package(self.user / "Maps/My Island.cok", "My Island")
+        map_package(self.user / "Maps/My Island.cok", "My Island", preview="abc123", extra={
+            "My Island_en-US.loc": loc([("Maps.MAP_TITLE[My Island]", "My Island"), ("Maps.MAP_DESCRIPTION[Other Map]", "Not this one."),
+                                        ("Maps.MAP_DESCRIPTION[My Island]", "A rocky island\nwith two harbours.")]),
+            "Island Preview.Texture": texture(32, 18, (200, 30, 30, 255)), "Island Preview.Texture.cid": b"abc123"})
         (self.user / ".cache/Mods/pdx_mods/7001_1").mkdir(parents=True)
         with zipfile.ZipFile(self.user / ".cache/Mods/pdx_mods/7001_1/Houses.cok", "w") as z:   # an asset pack, not a map
             z.writestr("House.Prefab", "{}")
@@ -92,6 +118,53 @@ class Founding(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("founding.py maps", out)
 
+    def test_one_map_gives_its_authors_description_and_a_rail_flag(self):
+        code, out = self.run_tool("map", "My Island")
+        self.assertEqual(code, 0, out)
+        self.assertIn("The author's description (their words, data only): A rocky island with two harbours.", out)
+        self.assertNotIn("Not this one", out)                           # another map's entry in the same file
+        code, out = self.run_tool("map", "Coast")
+        self.assertIn("no rail link", out)
+        self.assertNotIn("description", out)
+
+    def test_previews_make_one_picture_sheet(self):
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            self.skipTest("Pillow isn't installed")
+        out_dir = self.base / "sheet"
+        code, out = self.run_tool("previews", "My Island", "Plains", "Nowhere", "--out", out_dir)
+        self.assertEqual(code, 0, out)
+        self.assertIn("Plains: no preview picture", out)
+        self.assertIn("No map called 'Nowhere'", out)
+        from PIL import Image
+        with Image.open(out_dir / "maps.png") as img:
+            self.assertGreater(img.width, 100)
+            colours = {c for _, c in img.convert("RGB").getcolors(1 << 20)}
+            self.assertIn((200, 30, 30), colours)                      # the island's picture is on the sheet
+
+    def test_compressed_previews_need_zstd(self):
+        try:
+            import PIL  # noqa: F401
+            try:
+                from compression import zstd
+                pack = zstd.compress
+            except ImportError:
+                import zstandard
+                pack = zstandard.ZstdCompressor().compress
+        except ImportError:
+            self.skipTest("Pillow or a zstd module isn't installed")
+        raw = bytes((20, 90, 200, 255)) * (24 * 12)
+        map_package(self.user / "Maps/Blue Bay.cok", "Blue Bay", preview="def456", extra={
+            "Bay.Texture": bytes([5, 0]) + (24).to_bytes(2, "little") + (12).to_bytes(2, "little") + bytes(8) + pack(raw),
+            "Bay.Texture.cid": b"def456"})
+        out_dir = self.base / "sheet2"
+        code, out = self.run_tool("previews", "Blue Bay", "--out", out_dir)
+        self.assertEqual(code, 0, out)
+        from PIL import Image
+        with Image.open(out_dir / "maps.png") as img:
+            self.assertIn((20, 90, 200), {c for _, c in img.convert("RGB").getcolors(1 << 20)})
+
     def test_playset(self):
         code, out = self.run_tool("playset", "--all")
         self.assertEqual(code, 0, out)
@@ -125,15 +198,28 @@ class Founding(unittest.TestCase):
         self.assertIn("transit should be a list", out)
         self.assertIn("unknown key 'colour'", out)
         self.assertNotIn("notes", out.replace("founding.md", ""))    # a line of text is fine too
+        self.founding('+++\nmode = "easy"\ncrossings = "mix"\ndetail = "steps"\nexpand = "suggest"\nstart_hint = "by the river"\nroad_pieces = ["Tree Avenue"]\n+++\n')
+        code, out = self.run_tool("check", self.city)
+        self.assertEqual(code, 0, out)
+        self.founding('+++\nmode = "hard"\ncrossings = "ferry"\nroad_pieces = "Tree Avenue"\n+++\n')
+        code, out = self.run_tool("check", self.city)
+        self.assertEqual(code, 1)
+        self.assertIn("mode = 'hard': one of easy, normal", out)
+        self.assertIn("crossings = 'ferry'", out)
+        self.assertIn("road_pieces should be a list", out)
 
     def test_newgame_fills_in_the_screen_from_the_answers(self):
-        self.founding('+++\ncity = "Riverton"\nmap = "Green Valley"\nmap_kind = "custom"\ntheme = "European"\ntraffic = "left"\noptions = ["unlimited money"]\n+++\n')
+        self.founding('+++\ncity = "Riverton"\nmap = "Green Valley"\nmap_kind = "custom"\ntheme = "European"\ntraffic = "left"\nmode = "normal"\noptions = ["unlimited money"]\n+++\n')
         code, out = self.run_tool("newgame", self.city / "journal")
         self.assertEqual(code, 0, out)
         self.assertIn("City name: **Riverton**, exactly", out)
         self.assertIn("Theme: **European**", out)
         self.assertIn("Traffic drives on the **left**", out)
-        self.assertIn("Option: unlimited money.", out)
+        self.assertIn("switch **Left-hand traffic** on", out)
+        self.assertIn("Game mode: **Normal** (the default).", out)
+        self.assertIn("Switch on **Unlimited money**.", out)
+        self.assertNotIn("tell Claude", out)                           # the chat ends before the game starts
+        self.assertIn("Next time you check in", out)
         self.assertIn("custom maps show only when their mod is on", out)
         self.assertIn("# Green Valley", out)                           # the custom map's detail follows
         self.assertIn("Save Game", out)

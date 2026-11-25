@@ -5,13 +5,16 @@ Paths below use `<city>` for the city's folder (from `journal.py where`) and `jp
 
 The City Manager's voice (SKILL.md §4) carries through both: prep is the evening briefing at city hall ("Good evening,
 Mayor. Tonight's agenda…"), the report is the debrief after the session ("Welcome back, Mayor. Here's what changed in
-our city…"). Keep journal text lighter still: a voice in the summary line, practical words in the tasks.
+our city…"). One "Mayor" in the greeting is plenty; after it, talk as colleagues do. Keep journal text lighter
+still: a voice in the summary line, practical words in the tasks.
 
 ## Briefing (before the Mayor plays)
 
 1. **Read the state.**
    - Run `jp mayor <city>/journal` (anything since the last report: notes the Mayor wrote after a report, an unfinished wrap-up) and `jp open <city>/journal`.
    - Skim the dossier's watch list.
+   - **A city just founded** (`manager/founding.md`, but no plan in the dossier yet): the first plan comes first, from
+     the start snapshot (`founding.md`, step 11).
    - If no report followed the last session (the Mayor played since the last report: the journal shows activity after it, or the facts tool sees a newer save), write that report first: a briefing built on stale facts sends the Mayor after the wrong things.
 2. **Choose the list: 3 to 7 tasks, sized to the time.**
    - **Order:** things to do before launching (a launcher change, which save to load) first, then the quick or free win, then the next concrete step of the top-priority project, then decisions (two at most).

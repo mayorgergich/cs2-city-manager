@@ -43,12 +43,17 @@ Commands:
                                source, the game's journals folder and the planner's exports
   journal.py doctor            checks the setup: Python and Pillow, the game's data folder, the City Manager mod, City
                                Planning Draft, the journals and their snapshots, the cities set up
-  journal.py init ["City name"] [--id ID] [--folder DIR]
+  journal.py init ["City name"] [--id ID] [--folder DIR] [--active] [--founding]
                                first-run setup for a city, in one go: its folder, manager.toml, a dossier to fill in,
                                a journal source with a welcome briefing, and the journal itself in the game's folder.
                                Adopts a journal the Mayor started in game. With no name, adopts the one such journal.
+                               --active makes it the active city (the first city set up always is).
+                               --founding is for a city that doesn't exist yet (the founding chat): a "Founding day"
+                               page instead of the welcome briefing, and the city becomes the active one.
+  journal.py activate <city>   makes a city in cities.toml the active one (where, and the skill, start from it)
 
-Environment: CITY_MANAGER_ROOT (default <game user data>/ModsData/CityManager), CS2_USERDATA (the game's user-data
+Environment: CITY_MANAGER_ROOT (default <game user data>/ModsData/CityManager, or the older ModsData/CityJournal
+until the mod has run once since its rename), CS2_USERDATA (the game's user-data
 folder; default: Windows' own place, or Steam's Proton prefix on Linux), CITY_MANAGER_HOME (the City Manager's own data:
 cities.toml and the cities' folders; default %LOCALAPPDATA%\\CityManager on Windows, ~/.local/share/city-manager
 elsewhere). Needs Python 3.11+ and Pillow: `uv run journal.py ...` fetches both (see the script block above).
@@ -826,6 +831,34 @@ and nothing runs but the game. After you play, tell Claude you've just played: I
 look at our city, and write the report and the next briefing.
 """
 
+FOUNDING = """+++
+id = {bid}
+title = "Founding day"
+date = {date}
+summary = {summary}
+
+[[tasks]]
+id = "pause"
+text = "**Pause** for a few seconds: City Manager takes the start snapshot by itself"
+
+[[tasks]]
+id = "look"
+text = "Take a first look around: where would you like the city to start? A note on the **Notes** tab is plenty"
+
+[[tasks]]
+id = "window"
+text = "Optional: press **Float** at the top of this window and put it where you like it"
+
+[[tasks]]
+id = "wrapup"
+text = "Before you close the game: answer the **Wrap-up**, press **Done for today**, then save under the city's name"
++++
+## How we'll work
+
+Play as long as you like tonight; Claude stays closed. The next time you check in, I read the city from its start
+snapshot and draw the first plan from what we agreed at the founding.
+"""
+
 DOSSIER = """# {name}: dossier
 
 The City Manager's notes on this city: about a page. Fill the sections in with the Mayor over the first sessions, and
@@ -851,7 +884,26 @@ Re-read them from the newest snapshot (`city.py streets`): the game renames stre
 """
 
 
-def cmd_init(name=None, jid=None, folder=None):
+def set_active(text, jid):
+    """cities.toml's text with `active` set to jid (added at the top when there's none)."""
+    line = f"active = {toml_str(jid)}"
+    if re.search(r"(?m)^active\s*=", text):
+        return re.sub(r"(?m)^active\s*=.*$", lambda _: line, text, count=1)
+    return line + "\n" + text
+
+
+def cmd_activate(key):
+    registry, cities = load_registry()
+    if key not in (cities.get("cities") or {}):
+        print(f"{key!r} is not in {registry}. `journal.py where` lists the cities set up.")
+        return 1
+    write_atomic(registry, set_active(registry.read_text(encoding="utf-8-sig"), key))
+    tomllib.loads(registry.read_text(encoding="utf-8"))
+    print(f"Active city: {key}")
+    return 0
+
+
+def cmd_init(name=None, jid=None, folder=None, make_active=False, founding=False):
     registry, cities = load_registry()
     known = cities.get("cities") or {}
     if not name:
@@ -897,28 +949,35 @@ def cmd_init(name=None, jid=None, folder=None):
     def write(path, text):
         path.write_text(text, encoding="utf-8", newline="\n")
     write(src / "journal.toml", f"id = {toml_str(jid)}\ncity = {toml_str(name)}\naliases = []\nmanager = \"Claude, City Manager\"\n")
-    write(src / "city.md", f"+++\ntitle = {toml_str(name)}\ndate = {toml_str(today.strftime('%d %b %Y'))}\nsummary = \"The City Manager hasn't "
-          "looked at this city yet. Take a snapshot on this tab, then ask Claude for a report.\"\n+++\n")
-    write(src / "briefing.md", WELCOME.format(bid=toml_str(today.strftime("%Y-%m-%d")), date=toml_str(today.strftime("%d %b %Y"))))
+    city_summary = ("Founded today. The City Manager reads the city from its start snapshot at the next check-in." if founding else
+                    "The City Manager hasn't looked at this city yet. Take a snapshot on this tab, then ask Claude for a report.")
+    write(src / "city.md", f"+++\ntitle = {toml_str(name)}\ndate = {toml_str(today.strftime('%d %b %Y'))}\nsummary = {toml_str(city_summary)}\n+++\n")
+    bid, date = toml_str(today.strftime("%Y-%m-%d")), toml_str(today.strftime("%d %b %Y"))
+    write(src / "briefing.md", FOUNDING.format(bid=bid, date=date, summary=toml_str(f"If you can read this, {name} stands. Welcome to our city."))
+          if founding else WELCOME.format(bid=bid, date=date))
     write(city_dir / "manager/manager.toml", f"# The City Manager's settings for this city.\ncity = {toml_str(name)}\n"
           f"save_names = [{toml_str(name)}]   # every name the city has had in game\njournal = \"../journal\"\n")
     write(city_dir / "manager/dossier.md", DOSSIER.format(name=name))
 
     text = registry.read_text(encoding="utf-8-sig") if registry.exists() else ""
     entry = f"\n[cities.{jid}]\nname = {toml_str(name)}\ndir = {toml_str(city_dir.as_posix())}\n"
-    if "active" not in cities:
-        text = f"active = {toml_str(jid)}\n" + text
+    make_active = make_active or founding
+    if make_active or "active" not in cities:
+        text = set_active(text, jid)
     registry.parent.mkdir(parents=True, exist_ok=True)
     write_atomic(registry, text.rstrip("\n") + "\n" + entry if text.strip() else entry.lstrip("\n"))
     tomllib.loads(registry.read_text(encoding="utf-8"))   # still valid
 
     print(f"Set up {name}:")
     print(f"  city folder   {city_dir}")
-    print(f"  cities        {registry}" + ("" if "active" in cities else f" (active: {jid})"))
+    print(f"  cities        {registry}" + (f" (active: {jid})" if make_active or "active" not in cities else ""))
     code = cmd_build(src)
     if adopted:
         print("  The journal you started in game is kept: your notes and wrap-ups stay (they're in mayor.json).")
-    print("\nNext: load the city in the game and press Ctrl+J. The welcome briefing shows on the Today tab.")
+    if founding:
+        print(f"\nNext: the Mayor starts a New Game named exactly {name!r}; the Founding day page shows on the Today tab (Ctrl+J).")
+    else:
+        print("\nNext: load the city in the game and press Ctrl+J. The welcome briefing shows on the Today tab.")
     return code
 
 
@@ -938,6 +997,23 @@ def cmd_doctor():
     except ImportError:
         pil = None
     print(f"{ok(pil)}Python {sys.version.split()[0]}" + (f" with {pil}" if pil else ": Pillow is missing (run the scripts with `uv run`, which fetches it)"))
+    uv = shutil.which("uv")
+    if uv:
+        print(f"{ok(True)}uv: {uv}")
+    else:
+        print(f"{ok(bool(pil))}uv: not installed" + (" (fine: this Python has what the scripts need; run them with `python3 -I`)" if pil else
+              " (install it: `winget install astral-sh.uv` on Windows, the install line on https://docs.astral.sh/uv/ elsewhere)"))
+    try:
+        from compression import zstd  # noqa: F401
+        zs = True
+    except ImportError:
+        try:
+            import zstandard  # noqa: F401
+            zs = True
+        except ImportError:
+            zs = False
+    print(f"{ok(zs or uv)}Map pictures for the founding chat: " + ("ready" if zs else "with `uv run` (it fetches zstandard)" if uv else
+          "need Python 3.14+ or the zstandard package; the game's own maps' pictures won't show without one"))
     game = LOCALLOW.is_dir()
     print(f"{ok(game)}The game's data folder: {LOCALLOW}" + ("" if game else " (not found: start the game once, or set CS2_USERDATA)"))
     dll = _mod_found("Mods/*/CityManager.dll", ".cache/Mods/pdx_mods/*/CityManager.dll") if game else None
@@ -999,17 +1075,26 @@ def main(argv):
         return cmd_where(*args[1:])
     if args[:1] == ["doctor"] and len(args) == 1 and not flags:
         return cmd_doctor()
+    if args[:1] == ["activate"] and len(args) == 2 and not flags:
+        return cmd_activate(args[1])
     if argv[1:2] == ["init"]:
-        rest, opts, it = [], {}, iter(argv[2:])
+        rest, opts, it, active, founding = [], {}, iter(argv[2:]), False, False
         for a in it:
             if a in ("--id", "--folder"):
                 opts[a[2:]] = next(it, "")
+            elif a == "--active":
+                active = True
+            elif a == "--founding":
+                founding = True
             else:
                 rest.append(a)
         if len(rest) > 1 or any(r.startswith("--") for r in rest) or "" in opts.values():
             print(__doc__)
             return 2
-        return cmd_init(rest[0] if rest else None, opts.get("id"), opts.get("folder"))
+        if founding and not rest:
+            print("--founding needs the new city's name.")
+            return 2
+        return cmd_init(rest[0] if rest else None, opts.get("id"), opts.get("folder"), active, founding)
     allowed = {"--all", "--json"} if args[:1] == ["mayor"] else set()
     if len(args) != 2 or args[0] not in commands or flags - allowed:
         print(__doc__)

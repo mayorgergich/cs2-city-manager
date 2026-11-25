@@ -1,7 +1,7 @@
 # Setting up the City Manager: a new player or a new city
 
 The first time, a few minutes. For a city that doesn't exist yet (the Mayor is about to press New Game), use
-`founding.md` instead: it ends with the same `journal.py init`. Run the scripts as SKILL.md says (`uv run <this skill's folder>/scripts/journal.py ...`).
+`founding.md` instead: it sets the city up with `journal.py init --founding`. Run the scripts as SKILL.md says (`uv run <this skill's folder>/scripts/journal.py ...`).
 
 1. **Check the setup:** `journal.py doctor`. It checks Python and Pillow, the game's data folder, the City Manager mod,
    City Planning Draft (the build overlay), the journals and their snapshots, and the cities already set up. Help the

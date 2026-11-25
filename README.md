@@ -57,11 +57,12 @@ else too.
 - [x] Nothing drops off the list: open tasks carry over, stale ones get asked about, and projects keep their history
 - [x] One-line install in Claude Code, and a first-run setup that checks your game and makes your city's journal
 - [x] A founding chat for a brand-new city, played like the opening of an old text adventure: your City Manager helps
-      you choose a map, checks your playset, asks about the city you want (every part optional), gives you the New Game
-      settings, and has the journal waiting before the city even exists
+      you choose a map (with pictures of each), checks your playset, asks about the city you want (every part optional),
+      gives you the New Game settings, and has the journal waiting before the city even exists
+- [x] A first road plan for a new city, drawn from a survey of its map: the main roads and highways in phases, checked
+      against the city and drawn as pictures, or as a plan in City Planning Draft if you want one
 
 **Coming next**
-- [ ] A first road plan for a new city, drawn from its survey (in progress)
 - [ ] Reports straight from the snapshot: your numbers against last session, a fresh map, and steps checked in the city
 - [ ] *Show in planner*: open a project's plan in City Planning Draft with one click
 - [ ] Notes about the building, road or district you've selected, and notes marked as questions for the City Manager
