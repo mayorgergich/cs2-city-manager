@@ -18,7 +18,7 @@ renamed street, the guide's order with `cityplan.py front`), revise the briefing
 needs attention is a task), `jp build`, and hand over.
 
 **Report:** (1) `report.py <city>/journal --draft` (both sides of the journal, the city's facts with what needs
-attention, the pictures, and `reports/<date>.md` written as a draft). (2) Fill every `TODO:` (the summary, an answer
+attention, what the Mayor drew in the planner, the pictures, and `reports/<date>.md` written as a draft). (2) Fill every `TODO:` (the summary, an answer
 to every note and wrap-up answer, what you see, from What needs attention, at most two decisions) and keep five to seven numbers. (3) Tick the project steps its "Built as
 planned" names. (4) `jp archive`, the next briefing from the plan you have, `jp build`, `jp ack`, `city.py keep`.
 (5) Send the debrief. (6) Only then, and only on a yes: the next streets (`plan.py grid`, then `plan.py ship`: the

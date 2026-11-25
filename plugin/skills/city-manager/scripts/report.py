@@ -7,7 +7,8 @@
 report's [[numbers]] entries), what was built, changed and removed, how far the plan has got (built, partly, not yet,
 built differently), what needs attention (money, power, water, full services, jobs, happiness and what drags it down,
 slow streets, crowded transit, demand and what holds it back, warning icons), a fresh map and a picture of the plan's
-progress in the journal's images folder, and the open road ends the next plan can start from. Run it beside `journal.py mayor` (the Mayor's side: ticks, notes, the wrap-up); the
+progress in the journal's images folder, what the Mayor drew in the planner since the guide it holds (checked), and the
+open road ends the next plan can start from. Run it beside `journal.py mayor` (the Mayor's side: ticks, notes, the wrap-up); the
 two together are the report's facts. It only reads the city, and writes nothing but the two pictures.
 
 usage:
@@ -20,7 +21,8 @@ usage:
   report.py <src> --prep [--plan PLAN.json]
       The briefing's facts: what the Mayor added since the last report, what's still open, whether the city was played
       since, what needs attention now (for the briefing's tasks), the plan checked against the newest snapshot (locked
-      pieces, steep grades, crossings), and whether the city's newest guide is the one the planner's Import will load.
+      pieces, steep grades, crossings), what the Mayor drew in the planner since its guide, and whether the city's newest
+      guide is the one the planner's Import will load.
 
 <src> is the city's journal source folder (<city>/journal), as for city.py; a snapshot file works too, with --images.
 Defaults: --before kept (the copy the last report kept; the session start when there's none), --plan
@@ -92,6 +94,34 @@ def guide_status(city_name):
         return f"{stem(newest)} is the newest guide: the planner's Import latest file loads it."
     return (f"The newest export is {stem(newest)}, not {city_name}'s: before the Mayor plays, run "
             f"`cityplan.py front \"{stem(mine[0])}\"`.")
+
+
+def planner_section(src, snap, plan_path, heading="## In the planner"):
+    """What the Mayor drew in City Planning Draft since the guide it holds, checked; None without a journal source."""
+    import json
+    import tomllib
+    toml = Path(src).expanduser() / "journal.toml"
+    if not toml.exists():
+        return None
+    cfg = tomllib.loads(toml.read_text(encoding="utf-8-sig"))
+    name = str(cfg.get("city") or "")
+    guides = plan.guides_of(name, Path(cityplan.ROOT) / "Exports")
+    map_id = plan.map_id_for(name, cfg.get("aliases") or [], guides)
+    if not map_id:
+        return f"{heading}\n\nNo guide yet and no planner document named like the city.\n"
+    ch = cityplan.mayor_changes(map_id)
+    if ch and plan_path and Path(plan_path).exists():
+        ch = cityplan.pending(ch, json.loads(Path(plan_path).read_text(encoding="utf-8-sig")))
+    newest = f"{name} {max(n for n, _ in guides)}" if guides else None
+    out = [heading, "", cityplan.changes_markdown(ch, newest).strip()]
+    if ch and ch.get("kept"):
+        out += ["", f"{ch['kept']} more change{'s' if ch['kept'] != 1 else ''} by the Mayor {'are' if ch['kept'] != 1 else 'is'} in the plan file already (--keep-mayor)."]
+    lines = plan.drawings_check(snap, ch) if ch and ch["count"] else []
+    if lines:
+        out += ["", "How they fit (`plan.py check` on them):", ""] + lines
+    if ch and ch["count"]:
+        out += ["", "Talk about them in the report; `plan.py ship` stops until the Mayor says what to keep (--keep-mayor, --drop-mayor)."]
+    return "\n".join(out) + "\n"
 
 
 def main(argv):
@@ -186,6 +216,11 @@ def main(argv):
             for file, caption, what in pictures:
                 print(f"- `![{caption}]({file})`: {what}")
             print()
+
+    # the Mayor's own drawings in the planner
+    section = planner_section(src, snap, plan_path) if is_source else None
+    if section:
+        print(section)
 
     # where the next plan can start
     ends = city.road_ends(snap)
@@ -305,7 +340,10 @@ def prep(src, is_source, snap, now_path, then_path, plan_path, name):
             print(strip_heading(chk.markdown(now_path.name)) + "\n")
         except ValueError:
             print("## The plan\n\nThe snapshot has no terrain part, so the plan can't be checked.\n")
-    # the guide
+    # the Mayor's own drawings, then the guide
+    section = planner_section(src, snap, plan_path) if is_source else None
+    if section:
+        print(section)
     print("## The guide\n")
     print(guide_status(name) + "\n")
     # the mods scan

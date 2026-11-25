@@ -54,10 +54,15 @@ choice wins, and the next guide follows what's really there.
 
 ## Making one
 
-1. **Read the Mayor's own drawings first.** Importing replaces the planner's whole document, so anything the Mayor drew
-   since the last guide is lost unless it's in the new one:
-   `cityplan.py read <map id> --plan "<plan name>" --out mine.json` for each plan they changed (run it like `journal.py`).
-   Keep their changes in the new guide, or say in the briefing what an import would drop.
+1. **The Mayor's own drawings come first.** Importing replaces the planner's whole document, so anything the Mayor drew
+   since the last guide is lost unless it's in the new one. `plan.py drawings <city>/journal` lists what they drew,
+   moved, renamed or deleted since the guide the planner holds (and whether the newest guide was imported at all),
+   with `plan.py check` on their drawings; `report.py` shows the same under "In the planner". `plan.py ship` checks it
+   too and stops while anything is left: ask the Mayor, then ship with `--keep-mayor` (their changes go into the plan
+   file, backed up first: drawn items added, moved or renamed ones take their version, deleted ones go) or
+   `--drop-mayor`. Treat their drawings as their ideas: say how they fit the hierarchy and what they'd cost in game,
+   never redraw them unasked (`road-hierarchy.md` § When the Mayor breaks the rules). A move under 8 m is a nudge and
+   stays as planned.
 2. **Write a simple plan file** (see `cityplan.py`'s docstring): `{"plans": [{"name": "Now · Road fixes", "roads":
    [...], "areas": [...], "junctions": [...]}, ...]}`, in the order above. Roads need two or more points, areas three or
    more, and a junction names two roads of its own plan.

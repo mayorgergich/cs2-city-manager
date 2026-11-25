@@ -195,6 +195,293 @@ def naming_problems(file_name, plan_names):
     return out
 
 
+# --- the Mayor's own drawings: what changed in the planner since the guide it holds
+
+NUDGE = 8.0   # metres: a move under one zoning cell is a nudge (an accidental drag), not a change
+KINDS = ("roads", "areas", "junctions")
+
+
+def read_doc(path):
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            doc = json.load(f)
+        return doc if isinstance(doc, dict) and isinstance(doc.get("plans"), list) else None
+    except (OSError, ValueError):
+        return None
+
+
+def planner_doc(map_id):
+    """The planner's own document for a map id, as (path, doc), or (None, None): the newest saved one."""
+    best = None
+    for path in glob.glob(os.path.join(ROOT, "*", "planning.cityplan.json")):
+        doc = read_doc(path)
+        if doc and str(doc.get("map_id", "")).casefold() == str(map_id).casefold():
+            if best is None or os.path.getmtime(path) > best[0]:
+                best = (os.path.getmtime(path), path, doc)
+    return (best[1], best[2]) if best else (None, None)
+
+
+def guide_docs(map_id):
+    """This map id's guides in Exports and Exports/old: [(path, doc)], newest first."""
+    out = []
+    for path in glob.glob(os.path.join(ROOT, "Exports", "*.cityplan.json")) + glob.glob(os.path.join(ROOT, "Exports", "old", "*.cityplan.json")):
+        doc = read_doc(path)
+        if doc and str(doc.get("map_id", "")).casefold() == str(map_id).casefold():
+            out.append((path, doc))
+    return sorted(out, key=lambda pd: os.path.getmtime(pd[0]), reverse=True)
+
+
+def doc_items(doc):
+    """{item id: (plan id, plan name, kind, item)} for a planner document or a guide."""
+    out = {}
+    for p in doc.get("plans", []):
+        if not isinstance(p, dict):
+            continue
+        for kind in KINDS:
+            for it in p.get(kind) or []:
+                if isinstance(it, dict) and it.get("id"):
+                    out[it["id"]] = (p.get("id"), p.get("name") or "", kind, it)
+    return out
+
+
+def item_xz(kind, it):
+    q = it.get("polygon") if kind == "areas" else [it["position"]] if kind == "junctions" and isinstance(it.get("position"), dict) else it.get("points")
+    return [(float(v.get("x", 0)), float(v.get("z", 0))) for v in q or [] if isinstance(v, dict)]
+
+
+def type_of(kind, it):
+    return it.get({"roads": "road_class", "areas": "area_type", "junctions": "junction_type"}[kind])
+
+
+def simple_item(kind, it, road_names):
+    """A planner item in the simple plan format (as `read` writes it)."""
+    name = it.get("name") or ""
+    xz = [[round(x, 1), round(z, 1)] for x, z in item_xz(kind, it)]
+    if kind == "roads":
+        out = {"name": name, "class": it.get("road_class", "Local"), "points": xz}
+        if it.get("smoothing"):
+            out["smoothing"] = it["smoothing"]
+    elif kind == "areas":
+        out = {"name": name, "type": it.get("area_type", "Custom"), "polygon": xz}
+        if it.get("fill_color"):
+            out["fill"] = it["fill_color"]
+    else:
+        out = {"name": name, "type": it.get("junction_type", "Normal"), "position": xz[0] if xz else [0, 0],
+               "road_a": road_names.get(it.get("road_a"), it.get("road_a")), "road_b": road_names.get(it.get("road_b"), it.get("road_b"))}
+    return out
+
+
+def displacement(a, b):
+    """How far an item moved: the largest move of one of its points, or None when its outline changed shape."""
+    if len(a) != len(b):
+        return None
+    return max((math.hypot(p[0] - q[0], p[1] - q[1]) for p, q in zip(a, b)), default=0.0)
+
+
+def mayor_changes(map_id):
+    """What changed in the planner's document since the guide it holds, or None without a planner document. The guide
+    is the export sharing the most item ids with the document (Import keeps the ids; each export makes new ones)."""
+    path, doc = planner_doc(map_id)
+    if not doc:
+        return None
+    pi = doc_items(doc)
+    held, gi, gdoc, shared = None, {}, None, 0
+    for gpath, g in guide_docs(map_id):
+        items = doc_items(g)
+        n = len(set(pi) & set(items))
+        if n > shared:
+            held, gi, gdoc, shared = gpath, items, g, n
+    names = {i: (v[3].get("name") or "") for i, v in pi.items() if v[2] == "roads"}
+    gnames = {i: (v[3].get("name") or "") for i, v in gi.items() if v[2] == "roads"}
+    gplans = {p.get("id"): p.get("name") for p in (gdoc or {}).get("plans", []) if isinstance(p, dict)}
+    pplans = {p.get("id"): p.get("name") for p in doc.get("plans", []) if isinstance(p, dict)}
+
+    def entry(v, road_names, **kw):
+        return dict({"plan": v[1], "kind": v[2], "name": v[3].get("name") or "", "item": simple_item(v[2], v[3], road_names),
+                     "modified": v[3].get("modified_at")}, **kw)
+    ch = {"planner": path, "guide": held, "shared": shared, "added": [], "deleted": [], "changed": [], "nudged": [],
+          "plans_added": [pplans[i] for i in pplans if i not in gplans] if gdoc else [],
+          "plans_deleted": [gplans[i] for i in gplans if i not in pplans],
+          "plans_renamed": [(gplans[i], pplans[i]) for i in pplans if i in gplans and gplans[i] != pplans[i]]}
+    for i, v in pi.items():
+        if i not in gi:
+            ch["added"].append(entry(v, names))
+            continue
+        g = gi[i]
+        what = []
+        if (v[3].get("name") or "") != (g[3].get("name") or ""):
+            what.append(f"renamed from {g[3].get('name') or '(no name)'!r}")
+        if type_of(v[2], v[3]) != type_of(g[2], g[3]):
+            what.append(f"{type_of(g[2], g[3])} → {type_of(v[2], v[3])}")
+        if v[0] != g[0]:
+            what.append(f"moved from the plan {g[1]!r}")
+        d = displacement(item_xz(v[2], v[3]), item_xz(g[2], g[3]))
+        if d is None:
+            what.append("reshaped")
+        elif d > NUDGE:
+            what.append(f"moved up to {d:,.0f} m")
+        if what:
+            ch["changed"].append(entry(v, names, was={"plan": g[1], "name": g[3].get("name") or ""}, what=what))
+        elif d and d > 0.5:
+            ch["nudged"].append(entry(v, names, metres=round(d, 1)))
+    for i, g in gi.items():
+        if i not in pi:
+            ch["deleted"].append(entry(g, gnames))
+    ch["count"] = (len(ch["added"]) + len(ch["deleted"]) + len(ch["changed"]) + len(ch["plans_added"])
+                   + len(ch["plans_deleted"]) + len(ch["plans_renamed"]))
+    return ch
+
+
+def a_kind(kind):
+    return {"roads": "a road", "areas": "an area", "junctions": "a junction"}.get(kind, kind)
+
+
+def changes_markdown(ch, newest_guide=None, limit=40):
+    """The Mayor's planner changes as Markdown for the chat."""
+    if ch is None:
+        return "No planner document for this city yet (the Mayor hasn't opened City Planning Draft in it)."
+    held = os.path.basename(ch["guide"])[: -len(".cityplan.json")] if ch["guide"] else None
+    lines = []
+    if held:
+        lines.append(f"The planner holds the guide **{held}**" + (f" ({newest_guide}, the newest, isn't imported yet)" if newest_guide and newest_guide != held else "") + ".")
+    else:
+        lines.append("The planner holds none of this city's guides: everything in it is the Mayor's own (or from a guide no longer in Exports).")
+    if not ch["count"]:
+        lines.append("Nothing drawn, moved or deleted since" + (f" ({len(ch['nudged'])} item{'s' if len(ch['nudged']) != 1 else ''} nudged a few metres, left as planned)" if ch["nudged"] else "") + ".")
+        return "\n\n".join(lines) + "\n"
+    rows = []
+    for old, new in ch["plans_renamed"]:
+        rows.append(("plan renamed", new, f"was {old!r}"))
+    for p in ch["plans_added"]:
+        rows.append(("new plan", p, ""))
+    for p in ch["plans_deleted"]:
+        rows.append(("plan deleted", p, ""))
+    for e in ch["added"]:
+        rows.append((f"drew {a_kind(e['kind'])}", e["plan"], (e["name"] or "(no name)") + f" ({e['item'].get('class') or e['item'].get('type')})"))
+    for e in ch["changed"]:
+        rows.append((f"changed {a_kind(e['kind'])}", e["plan"], (e["name"] or "(no name)") + ": " + "; ".join(e["what"])))
+    for e in ch["deleted"]:
+        rows.append((f"deleted {a_kind(e['kind'])}", e["plan"], e["name"] or "(no name)"))
+    lines.append(f"Since then the Mayor made {ch['count']} change{'s' if ch['count'] != 1 else ''} in the planner"
+                 + (f" (and nudged {len(ch['nudged'])} item{'s' if len(ch['nudged']) != 1 else ''} a few metres, left as planned)" if ch["nudged"] else "") + ":")
+    table = ["| What | Plan | Item |", "|---|---|---|"] + [f"| {a} | {b} | {c} |" for a, b, c in rows[:limit]]
+    if len(rows) > limit:
+        table.append(f"| … | | and {len(rows) - limit} more |")
+    return "\n\n".join(lines) + "\n\n" + "\n".join(table) + "\n"
+
+
+def pending(ch, plan_doc):
+    """The changes the plan file doesn't have yet (after --keep-mayor, the planner still holds the old guide until the
+    Mayor imports the new one): a copy of ch with those left, and "kept" counting the ones already in."""
+    plans = plan_doc["plans"] if isinstance(plan_doc.get("plans"), list) else [plan_doc]
+    by = {q.get("name"): q for q in plans if isinstance(q, dict)}
+
+    def xz(it):
+        q = it.get("points") or it.get("polygon") or ([it["position"]] if it.get("position") else [])
+        return [(float(v[0]), float(v[1])) for v in q if isinstance(v, (list, tuple)) and len(v) >= 2]
+
+    def has(plan, kind, name, item=None):
+        p = by.get(plan)
+        it = next((x for x in (p or {}).get(kind) or [] if isinstance(x, dict) and x.get("name") == name), None)
+        if it is None or item is None:
+            return it is not None
+        d = displacement(xz(it), xz(item))
+        return d is not None and d <= NUDGE
+
+    out = dict(ch)
+    out["added"] = [e for e in ch["added"] if not has(e["plan"], e["kind"], e["item"]["name"] or e["name"], e["item"])]
+    out["changed"] = [e for e in ch["changed"] if not has(e["plan"], e["kind"], e["item"]["name"] or e["name"], e["item"])]
+    out["deleted"] = [e for e in ch["deleted"] if has(e["plan"], e["kind"], e["name"])]
+    out["plans_added"] = [n for n in ch["plans_added"] if n not in by]
+    out["plans_deleted"] = [n for n in ch["plans_deleted"] if n in by]
+    out["plans_renamed"] = [(a, b) for a, b in ch["plans_renamed"] if not (b in by and a not in by)]
+    out["count"] = sum(len(out[k]) for k in ("added", "deleted", "changed", "plans_added", "plans_deleted", "plans_renamed"))
+    out["kept"] = ch["count"] - out["count"]
+    return out
+
+
+def keep_changes(plan_doc, ch):
+    """Puts the Mayor's planner changes into a simple plan document (in place). The guide's plan and item names find
+    the plan file's own; returns (applied lines, lines that couldn't be placed)."""
+    plans = plan_doc["plans"] if isinstance(plan_doc.get("plans"), list) else [plan_doc]
+    done, missed = [], []
+
+    def find_plan(name):
+        p = next((q for q in plans if q.get("name") == name), None)
+        if p is None and " · " in (name or ""):
+            topic = name.split(" · ", 1)[1]
+            p = next((q for q in plans if str(q.get("name", "")).split(" · ", 1)[-1] == topic), None)
+        return p
+
+    def plan_for(name):
+        p = find_plan(name)
+        if p is None:
+            p = {"name": name, "roads": [], "areas": [], "junctions": []}
+            plans.append(p)
+            done.append(f"new plan {name!r}")
+        for kind in KINDS:
+            p.setdefault(kind, [])
+        return p
+
+    def find_item(plan_name, kind, name):
+        p = find_plan(plan_name)
+        if p is None:
+            return None, None
+        it = next((x for x in p.get(kind) or [] if isinstance(x, dict) and x.get("name") == name), None)
+        return p, it
+
+    def unique(p, kind, name, fallback):
+        name = name or fallback
+        have = {x.get("name") for x in p.get(kind) or [] if isinstance(x, dict)}
+        base, n = name, 2
+        while name in have:
+            name, n = f"{base} ({n})", n + 1
+        return name
+
+    for old, new in ch["plans_renamed"]:
+        p = find_plan(old)
+        if p is not None:
+            p["name"] = new
+            done.append(f"plan {old!r} renamed {new!r}")
+        else:
+            missed.append(f"plan {old!r} renamed {new!r}: no such plan in the plan file")
+    for e in ch["deleted"]:
+        p, it = find_item(e["plan"], e["kind"], e["name"])
+        if it is not None:
+            p[e["kind"]].remove(it)
+            done.append(f"{e['name']!r} deleted from {p.get('name')!r}")
+        else:
+            missed.append(f"{e['name']!r} deleted in {e['plan']!r}: not in the plan file any more")
+    for e in ch["changed"]:
+        p, it = find_item(e["was"]["plan"], e["kind"], e["was"]["name"])
+        if it is None:
+            missed.append(f"{e['was']['name']!r} in {e['was']['plan']!r} ({'; '.join(e['what'])}): not in the plan file any more")
+            continue
+        new = dict(it)
+        for k in ("points", "polygon", "position", "class", "type", "road_a", "road_b"):
+            if k in e["item"]:
+                new[k] = e["item"][k]
+        new["name"] = e["item"]["name"] or it.get("name")
+        target = plan_for(e["plan"]) if e["plan"] != e["was"]["plan"] else p
+        p[e["kind"]].remove(it)
+        target[e["kind"]].append(new)
+        done.append(f"{new['name']!r} in {target.get('name')!r}: " + "; ".join(e["what"]))
+    for e in ch["added"]:
+        p = plan_for(e["plan"])
+        it = dict(e["item"], name=unique(p, e["kind"], e["item"]["name"], f"Mayor's {e['kind'][:-1]}"))
+        p[e["kind"]].append(it)
+        done.append(f"{it['name']!r} added to {p.get('name')!r}")
+    for name in ch["plans_deleted"]:
+        p = find_plan(name)
+        if p is not None:
+            plans.remove(p)
+            done.append(f"plan {name!r} deleted")
+    if not isinstance(plan_doc.get("plans"), list) and plans:
+        plan_doc.clear()
+        plan_doc["plans"] = plans
+    return done, missed
+
+
 def cmd_export(args):
     with open(args.pop(0), encoding="utf-8-sig") as f:
         src = json.load(f)

@@ -58,6 +58,14 @@ usage:
       number, written by hand or by an earlier ship, keeps its id, its words and its tick; a new one takes its words
       from the plan's "cards" (below), else from the item and its pieces. Then it points every project's link to the
       new guide and builds the journal. --dry-run says what it would do and writes nothing.
+      First it reads the planner's own document: Import replaces it whole, so if the Mayor drew, moved, renamed or
+      deleted anything since the guide it holds, ship stops and lists it (with `plan.py check` on their drawings).
+      Ship again with --keep-mayor (their changes go into the plan file, backed up first) or --drop-mayor (the new
+      guide replaces them): the Mayor's call. Moves under 8 m are nudges, left as planned.
+
+  plan.py drawings <city>/journal [--map-id ID] [--json FILE]
+      What the Mayor drew in the planner since the guide it holds (which guide that is, whether the newest was
+      imported), with `plan.py check` on their drawings: for the report, and before planning the next streets.
 
 <src> is a journal source folder, a journal folder in ModsData, or a snapshot file, as for city.py and survey.py.
 
@@ -79,6 +87,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sys
 import time
 from collections import Counter, defaultdict
@@ -1202,6 +1211,10 @@ def main(argv):
     args = argv[1:]
     if len(args) >= 2 and args[0] == "map":
         return main_map(args[1], args[2:])
+    if len(args) >= 2 and args[0] == "drawings":
+        rest_ = args[2:]
+        return main_drawings(args[1], rest_, lambda flag, default=None: rest_[rest_.index(flag) + 1]
+                             if flag in rest_ and rest_.index(flag) + 1 < len(rest_) else default)
     if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid", "ship"):
         print(__doc__)
         return 2
@@ -1657,6 +1670,82 @@ def project_linking(src, plan_name):
     return None
 
 
+def drawings_summary(ch, newest=None):
+    if ch is None:
+        return "no planner document for this city yet"
+    held = Path(ch["guide"]).name[: -len(".cityplan.json")] if ch["guide"] else None
+    where = f"it held {held}" if held else "it held none of this city's guides"
+    if held and newest and held != newest:
+        where += f" ({newest} not imported yet)"
+    if not ch["count"]:
+        if ch.get("kept"):
+            return where + f"; the Mayor's {ch['kept']} change{'s' if ch['kept'] != 1 else ''} since are in the plan file already"
+        return where + ", with nothing drawn, moved or deleted since" + (f" ({len(ch['nudged'])} nudged a few metres, left as planned)" if ch["nudged"] else "")
+    return where + f", with {ch['count']} change{'s' if ch['count'] != 1 else ''} by the Mayor"
+
+
+def planner_as_plans(doc):
+    """The planner's whole document in the simple plan format, every plan."""
+    out = []
+    for p in doc.get("plans", []):
+        if not isinstance(p, dict):
+            continue
+        names = {r.get("id"): r.get("name") or "" for r in p.get("roads") or [] if isinstance(r, dict)}
+        sp = {"name": p.get("name") or "", "roads": [], "areas": [], "junctions": []}
+        for kind in cityplan.KINDS:
+            sp[kind] = [cityplan.simple_item(kind, it, names) for it in p.get(kind) or [] if isinstance(it, dict)]
+        out.append(sp)
+    return out
+
+
+def drawings_check(snap, ch):
+    """plan.py check on the Mayor's own drawings: the problems of the items they drew or changed (Markdown lines). A
+    missing road piece isn't one: the Manager names it when the drawing becomes a build card."""
+    if not ch or not (ch["added"] or ch["changed"]):
+        return []
+    doc = cityplan.read_doc(ch["planner"])
+    if not doc:
+        return []
+    wanted = {(e["plan"], e["item"]["name"] or e["name"]) for e in ch["added"] + ch["changed"]}
+    try:
+        chk = Check(snap, planner_as_plans(doc), None)
+        chk.run()
+    except ValueError:
+        return ["- (the snapshot has no terrain part, so the drawings can't be checked)"]
+    icon = {"error": "✗", "warn": "!", "note": "·"}
+    lines = []
+    for r in chk.results:
+        for pr in sorted(r["problems"], key=lambda q: ("error", "warn", "note").index(q["level"])):
+            if (r["name"], pr["item"]) in wanted and not pr["text"].startswith("no road piece named"):
+                lines.append(f"- {icon[pr['level']]} **{pr['item']}** ({r['name']}): {pr['text']}")
+    return lines
+
+
+def main_drawings(src, rest, opt):
+    """plan.py drawings <city>/journal: what the Mayor drew in the planner since the guide it holds, checked."""
+    import tomllib
+    srcp = Path(src).expanduser()
+    if not (srcp / "journal.toml").exists():
+        raise SystemExit("drawings needs the city's journal source folder (<city>/journal, with its journal.toml)")
+    cfg = tomllib.loads((srcp / "journal.toml").read_text(encoding="utf-8-sig"))
+    city_name = str(cfg.get("city") or "")
+    guides = guides_of(city_name, Path(cityplan.ROOT) / "Exports")
+    map_id = opt("--map-id") or map_id_for(city_name, cfg.get("aliases") or [], guides)
+    if not map_id:
+        print(f"No map id for {city_name} yet: no guide exported and no planner document named like the city.")
+        return 0
+    ch = cityplan.mayor_changes(map_id)
+    newest = f"{city_name} {max(n for n, _ in guides)}" if guides else None
+    print(f"# The Mayor's planner drawings: {city_name} (map id {map_id!r})\n")
+    print(cityplan.changes_markdown(ch, newest))
+    lines = drawings_check(city.load(city.snapshot_path(srcp)), ch) if ch and ch["count"] else []
+    if lines:
+        print("How they fit (`plan.py check` on them):\n\n" + "\n".join(lines))
+    if opt("--json") and ch:
+        Path(opt("--json")).write_text(json.dumps(ch, ensure_ascii=False, indent=1), encoding="utf-8")
+    return 0
+
+
 def main_ship(plan_path, src, rest, opt):
     import tomllib
     import contextlib
@@ -1669,9 +1758,6 @@ def main_ship(plan_path, src, rest, opt):
     snap_path = city.snapshot_path(srcp)
     snap = city.load(snap_path)
     plans = load_plans(plan_path)
-    soon = [p.get("name") for p in plans if status_of(p.get("name")) in ("Now", "Next")]
-    if not soon:
-        raise SystemExit("No Now or Next plan in the file: nothing to ship (`<Status> · <Topic>`, guides.md).")
     dry = "--dry-run" in rest
     # 1. the guide's name and map id
     exports = Path(cityplan.ROOT) / "Exports"
@@ -1680,6 +1766,44 @@ def main_ship(plan_path, src, rest, opt):
     map_id = opt("--map-id") or map_id_for(city_name, cfg.get("aliases") or [], guides)
     if not map_id:
         raise SystemExit(f"No map id for {city_name}: open City Planning Draft once in the city, or pass --map-id.")
+    # 1b. the Mayor's own drawings: Import replaces the planner's whole document, so they come first
+    ch = cityplan.mayor_changes(map_id)
+    if ch:
+        ch = cityplan.pending(ch, json.loads(Path(plan_path).read_text(encoding="utf-8-sig")))
+    newest = f"{city_name} {max(n for n, _ in guides)}" if guides else None
+    drawings_line = drawings_summary(ch, newest)
+    if ch and ch["count"]:
+        if "--keep-mayor" in rest:
+            raw = json.loads(Path(plan_path).read_text(encoding="utf-8-sig"))
+            applied, missed = cityplan.keep_changes(raw, ch)
+            if not dry:
+                backup = Path(plan_path).with_name(Path(plan_path).name + time.strftime(".bak-%Y%m%d-%H%M%S"))
+                shutil.copy2(plan_path, backup)
+                tmp = Path(plan_path).with_suffix(".json.tmp")
+                tmp.write_text(json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
+                os.replace(tmp, plan_path)
+            plans = [q for q in (raw["plans"] if isinstance(raw.get("plans"), list) else [raw]) if isinstance(q, dict)]
+            drawings_line = (f"the Mayor's {ch['count']} planner change{'s' if ch['count'] != 1 else ''} "
+                             + ("would go" if dry else "went") + " into the plan file (--keep-mayor"
+                             + ("" if dry else f"; the old file is {backup.name}") + "): " + "; ".join(applied[:8])
+                             + (f" and {len(applied) - 8} more" if len(applied) > 8 else "")
+                             + (". Not placed: " + "; ".join(missed) if missed else ""))
+        elif "--drop-mayor" in rest:
+            drawings_line = f"the new guide replaces the Mayor's {ch['count']} planner change{'s' if ch['count'] != 1 else ''} (--drop-mayor)"
+        else:
+            print(f"# Not shipped: the Mayor's planner drawings come first\n")
+            print(cityplan.changes_markdown(ch, newest))
+            lines = drawings_check(snap, ch)
+            if lines:
+                print("How their drawings fit (`plan.py check` on them):\n\n" + "\n".join(lines) + "\n")
+            print("Importing a new guide replaces the planner's whole document, so all of this would go. Ask the Mayor "
+                  "what to keep, then ship again with **--keep-mayor** (their changes go into the plan file: what they "
+                  "drew is added, what they moved or renamed takes their version, what they deleted goes; the plan file "
+                  "is backed up first) or **--drop-mayor** (the new guide replaces them).")
+            return 1
+    soon = [p.get("name") for p in plans if status_of(p.get("name")) in ("Now", "Next")]
+    if not soon:
+        raise SystemExit("No Now or Next plan in the file: nothing to ship (`<Status> · <Topic>`, guides.md).")
     # 2. check
     chk = Check(snap, plans, guide)
     chk.run()
@@ -1765,6 +1889,7 @@ def main_ship(plan_path, src, rest, opt):
         built_ok, build_out = code == 0, out.getvalue().strip()
     looks = sum(1 for pr in soon_problems if pr["level"] == "warn")
     print(f"# {'Would ship' if dry else 'Shipped'}: {guide} (map id {map_id!r})\n")
+    print(f"- In the planner: {drawings_line}.")
     print(f"- Checked against {snap_path.name}: {len(errors)} to fix in Now and Next" + (" (shipped anyway: --force)" if errors else "")
           + (f", {looks} to look at (`plan.py check` lists them)" if looks else "") + ".")
     if not dry:

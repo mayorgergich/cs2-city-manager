@@ -74,7 +74,7 @@ layers = ["Base · Roads"]
 """
 
 
-class Ship(unittest.TestCase):
+class Base(unittest.TestCase):
     def setUp(self):
         self.base = Path(tempfile.mkdtemp(prefix="cm-ship-"))
         self.addCleanup(lambda: shutil.rmtree(self.base, ignore_errors=True))
@@ -110,6 +110,8 @@ class Ship(unittest.TestCase):
         front = text[4:text.index("\n+++", 3)]
         return tomllib.loads(front), text
 
+
+class Ship(Base):
     def test_one_run_exports_draws_and_writes_the_steps(self):
         code, out = self.ship()
         self.assertEqual(code, 0, out)
@@ -214,6 +216,110 @@ class Ship(unittest.TestCase):
         code, out = self.ship("--dry-run")
         self.assertEqual(code, 0, out)
         self.assertIn("# Would ship: Riverton 1 (map id 'Riverton')", out)
+
+
+CITYPLAN = HERE.parent / "skills/city-manager/scripts/cityplan.py"
+
+
+class Drawings(Base):
+    """The Mayor's own drawings in the planner: Riverton 1 imported, then a road drawn, one moved 50 m, one nudged 2 m,
+    an area deleted, a plan renamed (Next to Now), and a road drawn across the railway in the long-term plan."""
+
+    def setUp(self):
+        super().setUp()
+        subprocess.run([sys.executable, "-I", str(CITYPLAN), "export", str(self.plan_path), "--name", "Riverton 1",
+                        "--map-id", "riverton-map", "--out-dir", str(self.exports)], env=self.env, check=True,
+                       capture_output=True, timeout=60)
+        doc = json.loads((self.exports / "Riverton 1.cityplan.json").read_text(encoding="utf-8"))
+        plans = {p["name"]: p for p in doc["plans"]}
+        streets, homes, base = plans["Now · Streets"], plans["Next · Homes"], plans["Base · Roads"]
+
+        def road(name, pts, rid):
+            return {"object_type": "road", "road_class": "Local", "points": [{"x": x, "y": 50.0, "z": z} for x, z in pts],
+                    "smoothing": "Light", "id": rid, "name": name, "locked": False,
+                    "created_at": "2026-11-26T01:00:00.000000Z", "modified_at": "2026-11-26T01:00:00.000000Z"}
+        streets["roads"].append(road("Mayor's lane", [(-100, -50), (-150, -50)], "mayor1"))
+        base["roads"].append(road("Rail shortcut", [(150, -300), (350, -300)], "mayor2"))
+        for r in streets["roads"]:
+            if r["name"] == "2 West lane":
+                for q in r["points"]:
+                    q["z"] -= 50
+            if r["name"] == "1 Main link":
+                for q in r["points"]:
+                    q["x"] += 2
+        homes["areas"] = [a for a in homes["areas"] if a["name"] != "3 Homes"]
+        homes["name"] = "Now · Homes"
+        doc["view_settings"] = {}
+        planner = self.userdata / "ModsData/CityPlanningDraft/riverton-map"
+        planner.mkdir(parents=True)
+        (planner / "planning.cityplan.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    def test_ship_stops_and_lists_them_with_their_check(self):
+        code, out = self.ship()
+        self.assertEqual(code, 1, out)
+        self.assertIn("# Not shipped: the Mayor's planner drawings come first", out)
+        self.assertIn("The planner holds the guide **Riverton 1**.", out)
+        self.assertIn("Since then the Mayor made 5 changes in the planner (and nudged 1 item a few metres, left as planned)", out)
+        for row in ("| plan renamed | Now · Homes | was 'Next · Homes' |", "| drew a road | Now · Streets | Mayor's lane (Local) |",
+                    "| changed a road | Now · Streets | 2 West lane: moved up to 50 m |", "| deleted an area | Next · Homes | 3 Homes |"):
+            self.assertIn(row, out)
+        self.assertIn("✗ **Rail shortcut** (Base · Roads): crosses the railway at grade", out, "their drawings get the plan check")
+        self.assertFalse((self.exports / "Riverton 2.cityplan.json").exists(), "nothing exported")
+        self.assertEqual(json.loads(self.plan_path.read_text(encoding="utf-8")), PLANS, "the plan file is untouched")
+        code, out = self.run_plan("drawings", self.src)
+        self.assertEqual(code, 0, out)
+        self.assertIn("| drew a road | Base · Roads | Rail shortcut (Local) |", out)
+
+    def test_keep_mayor_puts_them_into_the_plan_file(self):
+        code, out = self.ship("--keep-mayor")
+        self.assertEqual(code, 0, out)
+        self.assertIn("- In the planner: the Mayor's 5 planner changes went into the plan file (--keep-mayor; the old file is plan.json.bak-", out)
+        plans = {p["name"]: p for p in json.loads(self.plan_path.read_text(encoding="utf-8"))["plans"]}
+        self.assertIn("Now · Homes", plans)
+        self.assertNotIn("Next · Homes", plans)
+        self.assertNotIn("3 Homes", [a["name"] for a in plans["Now · Homes"]["areas"]])
+        streets = {r["name"]: r for r in plans["Now · Streets"]["roads"]}
+        self.assertEqual(streets["2 West lane"]["points"], [[0, -150], [-150, -150]])
+        self.assertEqual(streets["2 West lane"]["piece"], "Two-Lane Road", "the plan's own keys stay")
+        self.assertEqual(streets["1 Main link"]["points"], [[0, 140], [0, -140]], "a nudge is left as planned")
+        self.assertIn("Mayor's lane", streets)
+        self.assertIn("Rail shortcut", [r["name"] for r in plans["Base · Roads"]["roads"]])
+        self.assertTrue(list(self.base.glob("plan.json.bak-*")), "the plan file is backed up first")
+        self.assertTrue((self.exports / "Riverton 2.cityplan.json").exists())
+        code, out = self.ship()
+        self.assertEqual(code, 0, out)
+        self.assertIn("# Shipped: Riverton 3", out)
+        self.assertIn("the Mayor's 5 changes since are in the plan file already", out,
+                      "until the Mayor imports the new guide, the planner still holds Riverton 1: kept changes don't stop ship again")
+
+    def test_drop_mayor_ships_anyway(self):
+        code, out = self.ship("--drop-mayor")
+        self.assertEqual(code, 0, out)
+        self.assertIn("the new guide replaces the Mayor's 5 planner changes (--drop-mayor)", out)
+        self.assertEqual(json.loads(self.plan_path.read_text(encoding="utf-8")), PLANS)
+
+    def run_plan(self, *args):
+        r = subprocess.run([sys.executable, "-I", str(PLAN), *map(str, args)], capture_output=True, text=True,
+                           encoding="utf-8", env=self.env, timeout=180)
+        return r.returncode, r.stdout + r.stderr
+
+    def test_the_report_and_the_prep_show_them(self):
+        report = HERE.parent / "skills/city-manager/scripts/report.py"
+        (self.root / "riverton/city-start.json").write_text(json.dumps(mm.snapshot()), encoding="utf-8")
+        for extra in ([], ["--prep"]):
+            r = subprocess.run([sys.executable, "-I", str(report), str(self.src), "--plan", str(self.plan_path), *extra],
+                               capture_output=True, text=True, encoding="utf-8", env=self.env, timeout=180)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            section = r.stdout.split("## In the planner", 1)[1].split("\n## ", 1)[0]
+            self.assertIn("| drew a road | Now · Streets | Mayor's lane (Local) |", section)
+            self.assertIn("✗ **Rail shortcut**", section)
+            self.assertIn("`plan.py ship` stops until the Mayor says what to keep", section)
+
+    def test_without_a_planner_document(self):
+        shutil.rmtree(self.userdata / "ModsData/CityPlanningDraft/riverton-map")
+        code, out = self.ship("--dry-run")
+        self.assertEqual(code, 0, out)
+        self.assertIn("- In the planner: no planner document for this city yet.", out)
 
 
 if __name__ == "__main__":
