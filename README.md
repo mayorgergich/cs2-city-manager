@@ -56,8 +56,12 @@ else too.
 - [x] Your own drawings in the planner are kept when the City Manager writes a new plan
 - [x] Nothing drops off the list: open tasks carry over, stale ones get asked about, and projects keep their history
 - [x] One-line install in Claude Code, and a first-run setup that checks your game and makes your city's journal
+- [x] A founding chat for a brand-new city, played like the opening of an old text adventure: your City Manager helps
+      you choose a map, checks your playset, asks about the city you want (every part optional), gives you the New Game
+      settings, and has the journal waiting before the city even exists
 
 **Coming next**
+- [ ] A first road plan for a new city, drawn from its survey (in progress)
 - [ ] Reports straight from the snapshot: your numbers against last session, a fresh map, and steps checked in the city
 - [ ] *Show in planner*: open a project's plan in City Planning Draft with one click
 - [ ] Notes about the building, road or district you've selected, and notes marked as questions for the City Manager
@@ -119,7 +123,8 @@ write a journal by hand ([format/README.md](format/README.md)).
 
    That needs Claude Code 2.1.275 or later. On older versions, use two lines instead:
    `/plugin marketplace add mayorgergich/cs2-city-manager`, then `/plugin install city-manager@cs2-city-manager`.
-4. **Your city.** Load your city in the game once with the mod on, then tell Claude: *"Set up City Manager for my city."*
+4. **Your city.** Starting a new one? Tell Claude *"Let's found a new city"* before you press New Game. For a city you
+   already have, load it in the game once with the mod on, then tell Claude: *"Set up City Manager for my city."*
    It checks your setup (the mods, the game's folder, uv), asks a few questions about how you like to play, and makes
    your city's journal. Press Ctrl+J in the game and the welcome briefing is there.
 

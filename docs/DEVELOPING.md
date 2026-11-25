@@ -14,7 +14,7 @@
 | `mod/ui/CityManager.mjs` | The panel: a hand-written UI module (no bundler). React and `cs2/*` come from the game |
 | `mod/tests/` | The mod's tests: C# (`CityManager.Tests`) and the panel (`ui.test.mjs`) |
 | `plugin/` | The Claude Code plugin (`.claude-plugin/plugin.json`); the repo root's `.claude-plugin/marketplace.json` lists it |
-| `plugin/skills/city-manager/` | The City Manager skill: `SKILL.md`, `references/`, and `scripts/journal.py` (journals), `scripts/city.py` (reads the city snapshot) and `scripts/cityplan.py` (guides for City Planning Draft) |
+| `plugin/skills/city-manager/` | The City Manager skill: `SKILL.md`, `references/`, and `scripts/journal.py` (journals), `scripts/city.py` (reads the city snapshot), `scripts/founding.py` (a new city's maps, playset and New Game screen) and `scripts/cityplan.py` (guides for City Planning Draft) |
 | `plugin/tests/` | The scripts' tests, and `cityplan_format_1.2.2.json` (City Planning Draft's own format) |
 | `format/` | The journal format and `merge_cases.json`, the merge rule's cases, run by both the panel's and the plugin's tests |
 | `docs/` | This file, how the mod works (`the-mod.md`), the Windows checklist and a sample journal |
@@ -83,6 +83,9 @@ builds happen on the maintainer's machine. The in-game checks on Windows are man
     pick, and what it refuses);
   - the guide exporter: City Planning Draft's format (`cityplan_format_1.2.2.json`), the naming warnings, junctions
     naming their own roads, the map id from the planner's document, reading the Mayor's drawings back;
+  - `founding.py` on a made-up game install: the maps (the game's, a map mod, the player's own; an asset pack isn't
+    a map), resources rated against the other maps, one map's needs and playset state, the playset check, the
+    founding answers' check, and the New Game steps;
   - `city.py` on a made-up city: the summary, changes across sessions matched by where roads are, streets, problems,
     services, the catalogue, and older snapshots without the newer parts.
 - **In game:** before installing a build, the maintainer runs a suite of checks inside a hidden copy of the game (it
@@ -107,7 +110,7 @@ builds happen on the maintainer's machine. The in-game checks on Windows are man
   - the key registration;
   - the mod's and the game's UI logs.
 
-- **Counts as of 0.8.0:** 92 mod store (on Windows run twice: .NET 10 and .NET Framework 4.8), 28 panel, 61 plugin scripts (one Windows-only), 77 in game. CI runs the offline ones on Linux and Windows, from a temporary folder named "Zoë Ørsted". The second-city check fails on 0.3.0 (checked 2026-11-24: it linked the second city to the first one's journal).
+- **Counts as of 0.8.0:** 92 mod store (on Windows run twice: .NET 10 and .NET Framework 4.8), 28 panel, 66 plugin scripts (one Windows-only), 77 in game. CI runs the offline ones on Linux and Windows, from a temporary folder named "Zoë Ørsted". The second-city check fails on 0.3.0 (checked 2026-11-24: it linked the second city to the first one's journal).
 - **Windows file handling** (no tester yet, so in CI): saving while another program holds the file (shared for writing,
   or only for reading), `journal.py` replacing `journal.json` while the game reads it, and paths with accents. The C#
   tests also run on .NET Framework 4.8, which, like the game's Mono on Windows, saves through Windows' own functions.

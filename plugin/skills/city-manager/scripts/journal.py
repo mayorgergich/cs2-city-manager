@@ -799,9 +799,9 @@ def unclaimed_journals(cities):
 
 WELCOME = """+++
 id = {bid}
-title = "Welcome to City Manager"
+title = "Welcome, Mayor"
 date = {date}
-summary = "Your journal is set up. A few small things tonight, so the City Manager can get to know your city."
+summary = "The City Manager's office is open. A few small things tonight, so I can get to know our city."
 
 [[tasks]]
 id = "snapshot"
@@ -819,11 +819,11 @@ text = "Optional: press **Float** at the top of this window and put it where you
 id = "wrapup"
 text = "Before you close the game: answer the **Wrap-up**, press **Done for today**, then save"
 +++
-## How this works
+## How we'll work, Mayor
 
-Before you play, tell Claude you're about to play: it writes tonight's briefing here. While you play, Claude is closed
-and nothing runs but the game. After you play, tell Claude you've just played: it reads what you ticked and noted,
-looks at your city, and writes a report and the next briefing.
+Before you play, tell Claude you're about to play: I'll put tonight's briefing here. While you play, Claude is closed
+and nothing runs but the game. After you play, tell Claude you've just played: I'll read what you ticked and noted,
+look at our city, and write the report and the next briefing.
 """
 
 DOSSIER = """# {name}: dossier

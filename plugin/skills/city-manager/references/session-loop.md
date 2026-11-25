@@ -3,6 +3,10 @@
 Paths below use `<city>` for the city's folder (from `journal.py where`) and `jp` for
 `uv run <this skill's folder>/scripts/journal.py` (or `python3 -I` with it, see SKILL.md).
 
+The City Manager's voice (SKILL.md §4) carries through both: prep is the evening briefing at city hall ("Good evening,
+Mayor. Tonight's agenda…"), the report is the debrief after the session ("Welcome back, Mayor. Here's what changed in
+our city…"). Keep journal text lighter still: a voice in the summary line, practical words in the tasks.
+
 ## Briefing (before the Mayor plays)
 
 1. **Read the state.**

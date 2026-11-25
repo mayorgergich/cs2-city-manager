@@ -73,19 +73,20 @@ you share it.
 
 ## The plugin (on your computer, with Claude Code)
 
-The plugin is a Claude Code skill plus three Python scripts. Claude Code runs on your own computer.
+The plugin is a Claude Code skill plus four Python scripts. Claude Code runs on your own computer.
 
 | Script | Reads | Writes |
 |---|---|---|
 | `journal.py` | A journal's source folder; `mayor.json` (it never writes it); its list of cities in its data folder (`%LOCALAPPDATA%\CityManager` or `~/.local/share/city-manager`); for `doctor`, the game's `Mods` folders, to check the mods are installed | `journal.json`, pictures, `cities.json` in `ModsData/CityManager`; its own notes beside the source (`.stamps.json`, `.manager-state.json`); with `init`, a new city's folder (settings, dossier, journal source) and `cities.toml` in its data folder |
 | `city.py` | `city.json`, `city-start.json` | Nothing |
+| `founding.py` | The game's map files (the game's own, from Paradox Mods, your own), the launcher's playset file (`.cache/Mods/playset_config.json`) and its database (`launcher-v2.sqlite`, opened read only, for mod names), and a city's `manager/founding.md` | Nothing |
 | `cityplan.py` | City Planning Draft's documents (to keep your own drawings) | Guides in City Planning Draft's `Exports` folder, and a copy of a plan where you ask |
 
 - **No network, no other programs:** none of the scripts touches the network or starts another program.
 - **`uv`:** if you run the scripts with `uv`, uv downloads Python and the Pillow picture library from their usual public
   sources the first time. That is uv's own download, not this project's.
 - **Installing the plugin:** Claude Code downloads it from this GitHub repo. The plugin has no hooks, agents or servers
-  of its own: just the skill and its three scripts.
+  of its own: just the skill and its four scripts.
 
 ### What goes to Anthropic
 

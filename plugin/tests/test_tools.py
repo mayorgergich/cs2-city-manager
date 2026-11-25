@@ -598,7 +598,7 @@ class FirstRun(unittest.TestCase):
         self.assertEqual(c["cities"]["riverton"]["name"], "Riverton")
         j = json.loads((self.e.root / "riverton/journal.json").read_text(encoding="utf-8"))
         self.assertEqual(j["city"], "Riverton")
-        self.assertEqual(j["briefing"]["title"], "Welcome to City Manager")
+        self.assertEqual(j["briefing"]["title"], "Welcome, Mayor")
         self.assertEqual([t["id"] for t in j["briefing"]["tasks"]], ["snapshot", "note", "window", "wrapup"])
         self.assertEqual(json.loads((self.e.root / "cities.json").read_text(encoding="utf-8"))["aliases"]["Riverton"], "riverton")
         code, out = self.e.run(JOURNAL, "where", env=self.env)
