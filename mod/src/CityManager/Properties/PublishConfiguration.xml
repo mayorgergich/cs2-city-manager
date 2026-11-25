@@ -28,10 +28,10 @@ City Manager is an in-game journal for your city, kept by a City Manager: Claude
 ## How to use it
 
 1. Subscribe. City Planning Draft, the build overlay, comes with it.
-2. In Claude Code, install the plugin (one line, on GitHub) and say "Set up City Manager for my city". Starting a new city? Say "Let's found a new city" instead.
-3. Start the game, then tell Claude you're about to load your city. It writes the plan into your journal.
+2. In Claude Code, install the plugin (one line, on GitHub), then type **/city-manager:city-manager set up my city**. Starting a new city? Type **/city-manager:city-manager found a new city** instead.
+3. Start the game, then type **/city-manager:city-manager prep me**. It writes the plan into your journal.
 4. Close Claude, load your city and press **Ctrl+J**: the plan is on the Today tab.
-5. When you're done, press *Done for today* and save. Then tell Claude: it reviews what you built and writes the next plan.
+5. When you're done, press *Done for today* and save. Then type **/city-manager:city-manager report**: it reviews what you built and writes the next plan.
 
 Without Claude, it's still a notebook: press **Ctrl+J** in any city and start a journal.
 

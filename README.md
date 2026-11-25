@@ -126,14 +126,19 @@ write a journal by hand ([format/README.md](format/README.md)).
 
    That needs Claude Code 2.1.275 or later. On older versions, use two lines instead:
    `/plugin marketplace add mayorgergich/cs2-city-manager`, then `/plugin install city-manager@cs2-city-manager`.
-4. **Your city.** Starting a new one? Tell Claude *"Let's found a new city"* before you press New Game. For a city you
-   already have, load it in the game once with the mod on, then tell Claude: *"Set up City Manager for my city."*
-   It checks your setup (the mods, the game's folder, uv), asks a few questions about how you like to play, and makes
-   your city's journal. Press Ctrl+J in the game and the welcome briefing is there.
+   When it asks where to install, choose **for you (user scope)**, so it works in any folder.
+4. **Your city.** Open Claude Code in the same folder each time (it remembers what you've allowed per folder; your
+   City Manager folder is a good one, see the [guide](docs/guide.md#talking-to-the-city-manager)), then type:
+   - starting a new city, before you press New Game: `/city-manager:city-manager found a new city`;
+   - a city you already have (load it once with the mod on first): `/city-manager:city-manager set up my city`.
+
+   It checks your setup (the mods, the game's folder, uv), asks a few questions, and makes your city's journal. Press
+   Ctrl+J in the game and its first page is there.
 
 The [guide](docs/guide.md) walks through all of it, founding a new city included.
 
-From then on: tell Claude when you're about to play and when you've just played (see "How" above).
+From then on: `/city-manager:city-manager prep me` before you load your city, and `/city-manager:city-manager report` when you're done (see "How"
+above). Plain words work too; the command always reaches the City Manager.
 
 ## Current progress
 

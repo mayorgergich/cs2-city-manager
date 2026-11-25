@@ -5,6 +5,7 @@ rhythm of play after that. The [README](../README.md) says what City Manager is 
 
 - [What you need](#what-you-need)
 - [Setting it up](#setting-it-up)
+- [Talking to the City Manager](#talking-to-the-city-manager)
 - [Founding a new city](#founding-a-new-city)
 - [After the founding: starting the city in the game](#after-the-founding-starting-the-city-in-the-game)
 - [A city you already have](#a-city-you-already-have)
@@ -34,18 +35,38 @@ plans.
    ```
 
    On Claude Code older than 2.1.275, use two lines: `/plugin marketplace add mayorgergich/cs2-city-manager`, then
-   `/plugin install city-manager@cs2-city-manager`.
+   `/plugin install city-manager@cs2-city-manager`. When it asks where to install, choose **for you (user scope)**:
+   then the plugin works whichever folder you open Claude Code in.
 3. **uv,** if the setup check asks for it: on Windows `winget install astral-sh.uv`, elsewhere the one-line install on
    [docs.astral.sh/uv](https://docs.astral.sh/uv/).
 
 Then pick one: [found a new city](#founding-a-new-city), or [set up a city you already have](#a-city-you-already-have).
 
+## Talking to the City Manager
+
+**Where:** Claude Code can run in any folder, but use the same one every time. Claude Code asks before it runs a
+script or changes a file, and when you answer "don't ask again", it remembers that for the folder you're in. A good
+folder is your City Manager folder, which the setup makes: `%LOCALAPPDATA%\CityManager` on Windows,
+`~/.local/share/city-manager` on Linux. In the Claude desktop app, pick it with the folder button next to the prompt
+box; in a terminal, `cd` there and run `claude`.
+
+**How:** type **`/city-manager:city-manager`** followed by what you want. Plain words often work too, because Claude picks the City Manager
+from what you ask, but the command always reaches it.
+
+| When | Type |
+|---|---|
+| Setting up a city you already have | `/city-manager:city-manager set up my city` |
+| Founding a new city | `/city-manager:city-manager found a new city` |
+| Before you load your city | `/city-manager:city-manager prep me` (add how long you've got, if you like) |
+| When you're done in the game | `/city-manager:city-manager report` |
+| Anything else | `/city-manager:city-manager` and your question: *where are we with Main Street?* |
+
 ## Founding a new city
 
 **When:** before you press New Game. The game can be closed, or sitting at the main menu.
 
-**How to start it:** open Claude Code and say *"Let's found a new city"* (or anything like it: *"I want to start a new
-city"*). The City Manager takes it from there, like the opening of an old text adventure:
+**How to start it:** in Claude Code, type `/city-manager:city-manager found a new city` (or say *"Let's found a new city"*). The City
+Manager takes it from there, like the opening of an old text adventure:
 
 > *Welcome, Mayor, to the founding of your new city. I'll be your City Manager. First question… what's the name of
 > our city?*
@@ -55,7 +76,7 @@ game starts: the City Manager never plays with you or asks you to come back mid-
 
 ```mermaid
 flowchart TD
-    A(["You: Let's found a new city"]) --> B["The welcome, and the city's name"]
+    A(["You ask to found a new city"]) --> B["The welcome, and the city's name"]
     B --> C{"Does the setup check<br/>find a problem?"}
     C -- Yes --> C1["The City Manager helps you fix it:<br/>uv, a missing mod, the game's folder"] --> C
     C -- No --> D["What shall we prepare?<br/>Pick any, or none"]
@@ -108,7 +129,7 @@ flowchart TD
     G -- Yes --> G1["Play as long as you like.<br/>Leave notes for the City Manager<br/>on the Notes tab"] --> H
     G -- No --> H
     H["Answer the Wrap-up, press Done for today,<br/>then Save Game under the city's name"]
-    H --> I(["Next time: open Claude and say<br/>you're about to play"])
+    H --> I(["Next time: open Claude Code<br/>and type prep me"])
     I --> J["The first plan, drawn from the snapshot:<br/>the road backbone, and a planner guide<br/>if you chose drafts"]
 ```
 
@@ -127,7 +148,7 @@ With planner drafts, it also writes a guide: in game, open City Planning Draft a
 
 ## A city you already have
 
-Load the city once with the mod on, then tell Claude *"Set up City Manager for my city"*. It checks your setup, asks
+Load the city once with the mod on, then type `/city-manager:city-manager set up my city`. It checks your setup, asks
 your city's name exactly as the game shows it, asks a few questions about how you like to play, and makes the journal.
 If you already started a journal in game (the panel's *Start a new journal for this city*), it keeps it, notes and
 all. Take a snapshot on the panel's **City** tab, and your first report starts from it.
@@ -136,9 +157,9 @@ all. Take a snapshot on the panel's **City** tab, and your first report starts f
 
 | When | You | The City Manager |
 |---|---|---|
-| **Before you play** | Tell Claude you're about to play (*"prep me"*). Say how long you've got, if you like | Writes tonight's briefing: 3 to 7 tasks, your projects' next steps, at most two decisions |
-| **While you play** | Close Claude. Ctrl+J for the journal: tick tasks, change a project's status, write notes | Nothing: no AI runs while you play |
-| **After you play** | Answer the Wrap-up, press Done for today, save. Then tell Claude you've just played | Reads your ticks, notes and the city's snapshot, writes the report, answers every note, and writes the next briefing |
+| **Before you load your city** | `/city-manager:city-manager prep me`. Say how long you've got, if you like | Writes tonight's briefing: 3 to 7 tasks, your projects' next steps, at most two decisions |
+| **In the game** | Close Claude. Ctrl+J for the journal: tick tasks, change a project's status, write notes | Nothing: no AI runs while you play |
+| **When you're done** | Answer the Wrap-up, press Done for today, save. Then `/city-manager:city-manager report` | Reads your ticks, notes and the city's snapshot, writes the report, answers every note, and writes the next briefing |
 
 ## When something's off
 

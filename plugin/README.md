@@ -11,8 +11,10 @@ journal in the game.
 /plugin install city-manager --marketplace mayorgergich/cs2-city-manager
 ```
 
-Then tell Claude: "Set up City Manager for my city." It needs the City Manager mod in the game and
-[uv](https://docs.astral.sh/uv/) to run its scripts.
+Choose **for you (user scope)** when it asks, so it works in any folder. Then type `/city-manager:city-manager set up my city`
+(or `/city-manager:city-manager found a new city` for a city that doesn't exist yet). It needs the City Manager mod in the game and
+[uv](https://docs.astral.sh/uv/) to run its scripts. How to use it day to day:
+[the guide](https://github.com/mayorgergich/cs2-city-manager/blob/main/docs/guide.md).
 
 Everything else, including what it touches and what it sends where: the repo's
 [README](https://github.com/mayorgergich/cs2-city-manager) and
