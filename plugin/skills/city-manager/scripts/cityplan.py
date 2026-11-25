@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""The City Manager's guide exporter: a simple plan JSON to and from the City Planning Draft mod (pdx 155935, by
+nooolan; written against its version 1.2.2, schema 1.0). That mod is the build overlay: its plans are drawn over the city.
+
+  export PLAN.json [--map-id NAME] [--terrain terrain.json] [--name FILE] [--out-dir DIR]
+      Writes ModsData/CityPlanningDraft/Exports/<FILE>.cityplan.json. In game, the user opens the planner panel
+      and presses Import, which loads the NEWEST file in Exports. Import replaces the city's plan document
+      (undo with Ctrl+Z; the mod also keeps snapshots).
+  read CITY_OR_MAPID [--plan NAME_OR_ID] [--out plan_edited.json]
+      Reads <root>/<city>/planning.cityplan.json (what the user edited and saved in game) back into the simple
+      format, so the build stage can use the approved geometry.
+  mapid
+      Prints the map_id of the most recently saved planner document.
+
+The mod's map_id is the city name from the game's bottom toolbar, set when the planner UI first opens in that
+city. Import refuses a file whose map_id differs (case-insensitive), so have the user open the planner once in the
+new city, then run `mapid`, or pass --map-id.
+
+Simple PLAN.json:
+{
+  "name": "Backbone A",
+  "roads": [{"name": "Arterial 1", "class": "Highway|Arterial|Collector|Local", "points": [[x, z], ...],
+             "smoothing": "None|Light|Strong"}],
+  "areas": [{"name": "Harbourside", "type": "Residential|Commercial|Industrial|Office|Custom",
+             "polygon": [[x, z], ...], "fill": "#RRGGBB", "border": "#RRGGBB", "opacity": 0.38}],
+  "junctions": [{"name": "Sterling", "type": "Normal|Roundabout|Overpass|Underpass|Interchange|CrossingNoConnection|Ignored",
+                 "position": [x, z], "road_a": "<road name>", "road_b": "<road name>"}]
+}
+"plans": [ {...}, {...} ] instead of one plan gives the user alternatives (A/B) in the planner.
+
+Naming (the Mayor's convention since 2026-11-24; export warns when it's broken):
+  --name "<City> <N>"         one number that goes up by one per export; nothing else carries a version number
+  plan names "<Status> · <Topic>", at most 26 characters, Status in this order top to bottom:
+              Now (this session), Next, Later (parked or ideas), Base (the long-term picture), Done (one round, then dropped)
+  The topic uses the journal's and the briefing's words. Move older exports to Exports/old/ after an export.
+"""
+import datetime
+import glob
+import re
+import json
+import math
+import os
+import sys
+import uuid
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # real folder, also when run through a link
+from journal import LOCALLOW  # noqa: E402  the game's user-data folder ($CS2_USERDATA, Windows' own place, or Proton's)
+
+ROOT = str(LOCALLOW / "ModsData/CityPlanningDraft")
+ROAD_CLASSES = {"Highway", "Arterial", "Collector", "Local"}
+AREA_TYPES = {"Residential", "Commercial", "Industrial", "Office", "Custom"}
+AREA_COLOURS = {"Residential": "#22C55E", "Commercial": "#3B82F6", "Industrial": "#F59E0B", "Office": "#8B5CF6", "Custom": "#9CA3AF"}
+JUNCTION_TYPES = {"Normal", "Roundabout", "Overpass", "Underpass", "Interchange", "CrossingNoConnection", "Ignored"}
+SMOOTHING = {"None", "Light", "Strong"}
+
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f0Z")
+
+
+def newest_map_id():
+    docs = [p for p in glob.glob(os.path.join(ROOT, "*", "planning.cityplan.json"))]
+    if not docs:
+        return None
+    p = max(docs, key=os.path.getmtime)
+    with open(p, encoding="utf-8-sig") as f:
+        return json.load(f).get("map_id"), p
+
+
+def height_fn(terrain_path):
+    if not terrain_path:
+        return lambda x, z: 100.0
+    with open(terrain_path, encoding="utf-8") as f:
+        t = json.load(f)
+    R, c, m0 = t["resolution"], t["cellSize"], t["worldMin"]
+    H = t["heights"]
+
+    def h(x, z):
+        i = min(max(int((z - m0) / c), 0), R - 1); j = min(max(int((x - m0) / c), 0), R - 1)
+        return float(H[i * R + j])
+    return h
+
+
+def pt(p, h):
+    x, z = float(p[0]), float(p[1])
+    if not (math.isfinite(x) and math.isfinite(z)):
+        raise ValueError(f"non-finite point {p}")
+    return {"x": x, "y": h(x, z), "z": z}
+
+
+def _seg_hit(a1, a2, b1, b2):
+    d2 = (a2[0] - a1[0], a2[1] - a1[1]); d4 = (b2[0] - b1[0], b2[1] - b1[1])
+    den = d2[0] * d4[1] - d2[1] * d4[0]
+    if abs(den) < 0.0001:
+        return False
+    v = (b1[0] - a1[0], b1[1] - a1[1])
+    t = (v[0] * d4[1] - v[1] * d4[0]) / den; u = (v[0] * d2[1] - v[1] * d2[0]) / den
+    return 0.001 < t < 0.999 and 0.001 < u < 0.999
+
+
+def self_intersects(poly):
+    """The mod's Geometry.HasSelfIntersection (v1.2.2). One crossing area makes Import refuse the WHOLE file, and the
+    mod only says so in its panel status, not in its log."""
+    n = len(poly)
+    if n < 4:
+        return False
+    for i in range(n):
+        i2 = (i + 1) % n
+        for j in range(i + 1, n):
+            j2 = (j + 1) % n
+            if i != j and i2 != j and j2 != i and not (i == 0 and j2 == 0) and _seg_hit(poly[i], poly[i2], poly[j], poly[j2]):
+                return True
+    return False
+
+
+def build_plan(src, h):
+    errors = []
+    plan = {"id": uuid.uuid4().hex, "name": src.get("name", "Backbone"), "read_only": False, "reference_visible": False,
+            "created_at": now(), "modified_at": now(), "roads": [], "areas": [], "junctions": []}
+    ids = {}
+    for r in src.get("roads", []):
+        cls = r.get("class", "Local")
+        if cls not in ROAD_CLASSES: errors.append(f"road {r.get('name')}: class {cls}")
+        if len(r.get("points", [])) < 2: errors.append(f"road {r.get('name')}: needs >= 2 points")
+        rid = uuid.uuid4().hex; ids[r.get("name", rid)] = rid
+        plan["roads"].append({"object_type": "road", "road_class": cls, "points": [pt(p, h) for p in r["points"]],
+                              "smoothing": r.get("smoothing", "Light"), "id": rid, "name": r.get("name", ""),
+                              "locked": False, "created_at": now(), "modified_at": now()})
+    for a in src.get("areas", []):
+        typ = a.get("type", "Custom")
+        if typ not in AREA_TYPES: errors.append(f"area {a.get('name')}: type {typ}")
+        if len(a.get("polygon", [])) < 3: errors.append(f"area {a.get('name')}: needs >= 3 points")
+        elif self_intersects([(float(q[0]), float(q[1])) for q in a["polygon"]]):
+            errors.append(f"area {a.get('name')}: outline crosses itself (the mod would refuse the whole import)")
+        area = {"object_type": "area", "area_type": typ, "polygon": [pt(p, h) for p in a["polygon"]],
+                "smoothing": a.get("smoothing", "None"), "id": uuid.uuid4().hex, "name": a.get("name", ""),
+                "locked": False, "created_at": now(), "modified_at": now()}
+        # The planner writes all three on every area; these defaults are the zone colours it uses itself.
+        area["fill_color"] = a.get("fill", AREA_COLOURS.get(typ, AREA_COLOURS["Custom"]))
+        area["border_color"] = a.get("border", area["fill_color"])
+        area["opacity"] = a.get("opacity", 0.5)
+        plan["areas"].append(area)
+    for j in src.get("junctions", []):
+        typ = j.get("type", "Normal")
+        if typ not in JUNCTION_TYPES: errors.append(f"junction {j.get('name')}: type {typ}")
+        if j.get("road_a") not in ids or j.get("road_b") not in ids:
+            errors.append(f"junction {j.get('name')}: road_a/road_b must name roads in this plan"); continue
+        plan["junctions"].append({"object_type": "junction", "road_a": ids[j["road_a"]], "road_b": ids[j["road_b"]],
+                                  "position": pt(j["position"], h), "junction_type": typ, "connected": typ in ("Normal", "Roundabout", "Interchange"),
+                                  "candidate": False, "manual_override": True, "id": uuid.uuid4().hex, "name": j.get("name", ""),
+                                  "locked": False, "created_at": now(), "modified_at": now()})
+    return plan, errors
+
+
+STATUSES = ["Now", "Next", "Later", "Base", "Done"]
+PLAN_NAME = re.compile(r"(%s) · \S.*" % "|".join(STATUSES))
+
+
+def naming_problems(file_name, plan_names):
+    """Where an export breaks the naming convention (see the docstring)."""
+    out = []
+    if not (file_name and re.fullmatch(r".*\S \d+", file_name)):
+        out.append(f"file {file_name!r} should be \"<City> <N>\", like \"Riverton 4\"")
+    order = []
+    for n in plan_names:
+        m = PLAN_NAME.fullmatch(n)
+        if not m:
+            out.append(f"plan {n!r} should be \"<Status> · <Topic>\" with Status one of {', '.join(STATUSES)}")
+            continue
+        if len(n) > 26:
+            out.append(f"plan {n!r} is {len(n)} characters; the planner cuts it after about 26")
+        order.append(STATUSES.index(m.group(1)))
+    if order != sorted(order):
+        out.append("plans should run Now, Next, Later, Base, Done from the top")
+    return out
+
+
+def cmd_export(args):
+    with open(args.pop(0), encoding="utf-8-sig") as f:
+        src = json.load(f)
+    map_id = name = out_dir = terrain = None
+    while args:
+        a = args.pop(0)
+        if a == "--map-id": map_id = args.pop(0)
+        elif a == "--terrain": terrain = args.pop(0)
+        elif a == "--name": name = args.pop(0)
+        elif a == "--out-dir": out_dir = args.pop(0)
+    if not map_id:
+        found = newest_map_id()
+        if not found:
+            sys.exit("no planner document found; have the user open the planner in the city, or pass --map-id")
+        map_id, path = found
+        print(f"map_id from the newest planner document: {map_id!r} ({path})")
+    h = height_fn(terrain)
+    plans, errors = [], []
+    for p in src.get("plans", [src]):
+        plan, e = build_plan(p, h); plans.append(plan); errors += e
+    if errors:
+        sys.exit("not written:\n  " + "\n  ".join(errors))
+    for w in naming_problems(name, [p["name"] for p in plans]):
+        print("naming:", w)
+    doc = {"schema_version": "1.0", "map_id": map_id, "active_plan_id": plans[0]["id"], "plans": plans}
+    out_dir = out_dir or os.path.join(ROOT, "Exports")
+    os.makedirs(out_dir, exist_ok=True)
+    name = name or f"{map_id} draft {datetime.datetime.now():%Y%m%d-%H%M%S}"
+    path = os.path.join(out_dir, name + ".cityplan.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent=2)
+    n = sum(len(p["roads"]) for p in plans), sum(len(p["areas"]) for p in plans), sum(len(p["junctions"]) for p in plans)
+    print(f"wrote {path}: {len(plans)} plan(s), {n[0]} roads, {n[1]} areas, {n[2]} junctions")
+    print("In game: open the City Planning Draft panel and press Import (it loads the newest file in Exports).")
+
+
+def cmd_read(args):
+    city = args.pop(0); plan_sel = out = None
+    while args:
+        a = args.pop(0)
+        if a == "--plan": plan_sel = args.pop(0)
+        elif a == "--out": out = args.pop(0)
+    path = os.path.join(ROOT, city, "planning.cityplan.json")
+    with open(path, encoding="utf-8-sig") as f:
+        doc = json.load(f)
+    plans = doc["plans"]
+    plan = next((p for p in plans if plan_sel in (p["id"], p["name"])), None) if plan_sel else \
+        next((p for p in plans if p["id"] == doc.get("active_plan_id")), plans[0])
+    by_id = {r["id"]: r.get("name") or r["id"] for r in plan["roads"]}
+    simple = {"name": plan["name"], "map_id": doc["map_id"], "source": path,
+              "roads": [{"name": r.get("name") or r["id"], "class": r["road_class"], "smoothing": r.get("smoothing"),
+                         "points": [[p["x"], p["z"]] for p in r["points"]]} for r in plan["roads"]],
+              "areas": [{"name": a.get("name") or a["id"], "type": a["area_type"], "polygon": [[p["x"], p["z"]] for p in a["polygon"]]}
+                        for a in plan["areas"]],
+              "junctions": [{"name": j.get("name") or j["id"], "type": j["junction_type"], "position": [j["position"]["x"], j["position"]["z"]],
+                             "road_a": by_id.get(j["road_a"], j["road_a"]), "road_b": by_id.get(j["road_b"], j["road_b"]),
+                             "connected": j.get("connected")} for j in plan["junctions"]]}
+    text = json.dumps(simple, ensure_ascii=False, indent=1)
+    if out:
+        Path(out).write_text(text, encoding="utf-8"); print(f"wrote {out}: {len(simple['roads'])} roads, {len(simple['areas'])} areas, {len(simple['junctions'])} junctions (plan {plan['name']!r}, of {len(plans)})")
+    else:
+        print(text)
+
+
+if __name__ == "__main__":
+    for stream in (sys.stdout, sys.stderr):   # UTF-8 out, whatever the console (plan names hold a "·")
+        stream.reconfigure(encoding="utf-8", errors="replace")
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    rest = sys.argv[2:]
+    if cmd == "export": cmd_export(rest)
+    elif cmd == "read": cmd_read(rest)
+    elif cmd == "mapid":
+        found = newest_map_id(); print(found if found else "none")
+    else:
+        sys.exit(__doc__)

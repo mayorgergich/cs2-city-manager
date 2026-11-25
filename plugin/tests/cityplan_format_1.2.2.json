@@ -1,0 +1,76 @@
+{
+ "about": "City Planning Draft 1.2.2 (schema 1.0): the key names it writes in its own planner document, read 2026-11-24 from a document the mod saved. Our exports may leave out view_settings (document) and style (roads); everything else must match.",
+ "schema_version": "1.0",
+ "doc": [
+  "active_plan_id",
+  "map_id",
+  "plans",
+  "schema_version",
+  "view_settings"
+ ],
+ "plan": [
+  "areas",
+  "created_at",
+  "id",
+  "junctions",
+  "modified_at",
+  "name",
+  "read_only",
+  "reference_visible",
+  "roads"
+ ],
+ "roads": [
+  "created_at",
+  "id",
+  "locked",
+  "modified_at",
+  "name",
+  "object_type",
+  "points",
+  "road_class",
+  "smoothing",
+  "style"
+ ],
+ "areas": [
+  "area_type",
+  "border_color",
+  "created_at",
+  "fill_color",
+  "id",
+  "locked",
+  "modified_at",
+  "name",
+  "object_type",
+  "opacity",
+  "polygon",
+  "smoothing"
+ ],
+ "junctions": [
+  "candidate",
+  "connected",
+  "created_at",
+  "id",
+  "junction_type",
+  "locked",
+  "manual_override",
+  "modified_at",
+  "name",
+  "object_type",
+  "position",
+  "road_a",
+  "road_b"
+ ],
+ "point": [
+  "x",
+  "y",
+  "z"
+ ],
+ "optional": {
+  "doc": [
+   "view_settings"
+  ],
+  "roads": [
+   "style"
+  ]
+ }
+}

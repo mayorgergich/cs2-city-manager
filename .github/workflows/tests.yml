@@ -1,0 +1,54 @@
+# Offline tests on Linux and Windows for every push: the mod's store (C#), the panel (Node) and the plugin's scripts
+# (Python). No game here, so the C# tests take Json.NET 13.0.2 (the game's version) from NuGet. The mod itself needs the
+# game's DLLs to build, so it's built on the maintainer's machine (python build.py).
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: offline tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python packages
+        run: python -m pip install --disable-pip-version-check pillow numpy uv
+      # Every test's temporary files go in a folder with accents, like a player whose Windows user name has them
+      # (C:\Users\Zoë Ørsted\...). On Windows the C# tests also run on .NET Framework 4.8 (see the test project).
+      - name: A temporary folder with accents in its name
+        shell: python
+        run: |
+          import os, pathlib
+          folder = pathlib.Path(os.environ["RUNNER_TEMP"]) / "Zoë Ørsted"
+          folder.mkdir(parents=True, exist_ok=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"TMP={folder}\nTEMP={folder}\nTMPDIR={folder}\n")
+      - name: Offline tests
+        run: |
+          python -c "import tempfile; print('temporary files in', tempfile.gettempdir())"
+          python build.py test
+      - name: The plugin's scripts through uv (their package lists)
+        shell: bash
+        run: |
+          export CITY_MANAGER_HOME="$RUNNER_TEMP/city-manager" CS2_USERDATA="$RUNNER_TEMP/userdata"
+          uv run --script plugin/skills/city-manager/scripts/journal.py where
+          uv run --script plugin/skills/city-manager/scripts/cityplan.py mapid

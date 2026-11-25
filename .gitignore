@@ -1,0 +1,10 @@
+bin/
+obj/
+dist/
+.test-runs/
+__pycache__/
+
+__pycache__/
+mod/tests/CityManager.Tests/bin/
+mod/tests/CityManager.Tests/obj/
+docs/sample-journal/.stamps.json

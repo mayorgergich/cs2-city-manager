@@ -1,0 +1,13 @@
+{
+  "name": "cs2-city-manager",
+  "owner": {
+    "name": "mayorgergich"
+  },
+  "plugins": [
+    {
+      "name": "city-manager",
+      "source": "./plugin",
+      "description": "City Manager for Cities: Skylines II: briefings, reports and build-overlay guides around your play sessions."
+    }
+  ]
+}

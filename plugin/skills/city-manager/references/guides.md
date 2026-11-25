@@ -1,0 +1,68 @@
+# Guides: the build overlay
+
+A guide is a plan drawn over the Mayor's city by the **City Planning Draft** mod (by nooolan; written against its
+version 1.2.2): roads, areas and junction markers, one plan per topic. The Mayor imports it in the planner and builds
+from it; its *Construct with Draft* mode keeps a plan visible while they use the game's normal tools. You design the
+guide; the Mayor builds. Nothing in a guide changes the city.
+
+## Naming (keep it; the exporter and `journal.py build` warn when it's broken)
+
+- **File:** `<City> <N>`, like `Riverton 4`. One number, up by one with every export. Every guide holds all the plans,
+  and the planner's *Import latest file* loads the newest export, so the newest is always the one to import. After
+  exporting, move older exports to `Exports/old/` (`journal.py where` shows the folder).
+- **Plan rows:** `<Status> · <Topic>`, at most 26 characters (the planner cuts longer names with "…"). Status, top to
+  bottom:
+  - **Now**: what tonight's briefing builds;
+  - **Next**: after that;
+  - **Later**: parked, or ideas;
+  - **Base**: the long-term picture (roads, zoning, services, transit);
+  - **Done**: kept for one round so the Mayor can compare, then dropped.
+
+  The topic uses the same words as the journal's project and the briefing's task ("Port Gate", "Road fixes").
+- **Items inside a Now or Next plan:** plain step numbers in build order, `1 South circle`, `2 Ramp down`.
+- **No codes** anywhere the Mayor reads (no "A12", "D2", "R"), and no coordinates.
+
+## Build cards: every Now and Next item says exactly what to build
+
+The Mayor builds from the guide without Claude, so an item must not leave them guessing which road type, roundabout
+or junction to use. For every item in a Now or Next plan, the journal step gives:
+
+- **the exact piece, by the name the Mayor sees in the game's menu**: the road ("Small Road Oneway with Trees", a Road
+  Builder road by its own name), how many lanes, one-way or two-way, and for a junction its kind (roundabout and its
+  size or asset, traffic lights, stop signs, an interchange piece). Take names from `city.py catalogue` (the game's
+  menu names, Road Builder roads included, with lanes and cost; locked pieces are left out) or the city's mods list,
+  never from memory, and say when a choice is a suggestion rather than a must;
+- **a close-up picture** of that spot (the plan drawn over the city, the item marked), on its own line in the step's
+  project page or the briefing;
+- **the same number and words as the plan item**: plan item `2 Cedar: ramp down` and journal step
+  "2 Cedar: ramp down (Highway Oneway - 1 lane, about 20 m down)". The Mayor matches them on screen.
+
+**Street names go stale.** The game renames streets when roads are rebuilt: after one evening of rebuilding, three
+streets of a test city had new names.
+Re-read the names from the newest snapshot (`city.py streets`) before every guide and briefing, and never reuse names
+from an older one unchecked.
+
+**After the Mayor builds:** in the report, compare what was built with what the card asked: "Gateway: built as a
+four-way junction with traffic lights, the card said a small roundabout". Ask whether it was on purpose; the Mayor's
+choice wins, and the next guide follows what's really there.
+
+## Making one
+
+1. **Read the Mayor's own drawings first.** Importing replaces the planner's whole document, so anything the Mayor drew
+   since the last guide is lost unless it's in the new one:
+   `cityplan.py read <map id> --plan "<plan name>" --out mine.json` for each plan they changed (run it like `journal.py`).
+   Keep their changes in the new guide, or say in the briefing what an import would drop.
+2. **Write a simple plan file** (see `cityplan.py`'s docstring): `{"plans": [{"name": "Now · Road fixes", "roads":
+   [...], "areas": [...], "junctions": [...]}, ...]}`, in the order above. Roads need two or more points, areas three or
+   more, and a junction names two roads of its own plan.
+3. **Export:** `cityplan.py export plan.json --name "<City> <N>"`. The map id comes from the
+   planner's own document for the city (it's the city's name when the planner first opened there, and doesn't change
+   when the city is renamed); pass `--map-id` only if there are several. Fix every `naming:` warning.
+4. **Link it in the journal:** in each project, `[[plans]] kind = "draft"`, `name = "<City> <N>"`, `layers = [the plan
+   rows it uses]`. Then `journal.py build` checks that the guide exists and has those plans.
+5. **Tell the Mayor** in the briefing: "In the planner, Import latest file (<City> <N>)", and which plan to build from.
+
+## When statuses change
+
+When the Mayor builds a Now plan, it becomes Done in the next guide (one round), a Next plan may become Now, and the
+number goes up. Rename only the status and keep the topic, so the journal's words stay the same.

@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    City Manager (the mod). Built with the dotnet SDK (on Linux or Windows) against the game's own Managed DLLs: no Unity project,
+    no Burst, no source generators, and no other mod's DLL. build.py finds the game; otherwise set GamePath.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>CityManager</AssemblyName>
+    <RootNamespace>CityManager</RootNamespace>
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <!-- build.py sets the version to <version>+<commit>; don't let the SDK append the full commit id again. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- No debug files and no build paths in the DLL: a published DLL must not carry the builder's home folder. -->
+    <DebugType>none</DebugType>
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)=CityManager</PathMap>
+    <NoWarn>$(NoWarn);CS1591;CS0618;CS0649</NoWarn>
+    <Product>City Manager</Product>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <OutputPath>$(MSBuildProjectDirectory)/../../../bin/</OutputPath>
+    <!-- build.py passes the game's folder; these defaults are Steam's own folders. -->
+    <GamePath Condition="'$(GamePath)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildProgramFiles32)\Steam\steamapps\common\Cities Skylines II</GamePath>
+    <GamePath Condition="'$(GamePath)' == ''">$(HOME)/.local/share/Steam/steamapps/common/Cities Skylines II</GamePath>
+    <ManagedPath>$(GamePath)/Cities2_Data/Managed</ManagedPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="mscorlib" HintPath="$(ManagedPath)/mscorlib.dll" Private="false" />
+    <Reference Include="netstandard" HintPath="$(ManagedPath)/netstandard.dll" Private="false" />
+    <Reference Include="System" HintPath="$(ManagedPath)/System.dll" Private="false" />
+    <Reference Include="System.Core" HintPath="$(ManagedPath)/System.Core.dll" Private="false" />
+    <Reference Include="System.Runtime" HintPath="$(ManagedPath)/System.Runtime.dll" Private="false" />
+    <Reference Include="Game" HintPath="$(ManagedPath)/Game.dll" Private="false" />
+    <Reference Include="Colossal.Core" HintPath="$(ManagedPath)/Colossal.Core.dll" Private="false" />
+    <Reference Include="Colossal.Collections" HintPath="$(ManagedPath)/Colossal.Collections.dll" Private="false" />
+    <Reference Include="Colossal.Logging" HintPath="$(ManagedPath)/Colossal.Logging.dll" Private="false" />
+    <Reference Include="Colossal.IO.AssetDatabase" HintPath="$(ManagedPath)/Colossal.IO.AssetDatabase.dll" Private="false" />
+    <Reference Include="Colossal.Localization" HintPath="$(ManagedPath)/Colossal.Localization.dll" Private="false" />
+    <Reference Include="Colossal.Mathematics" HintPath="$(ManagedPath)/Colossal.Mathematics.dll" Private="false" />
+    <Reference Include="Colossal.UI.Binding" HintPath="$(ManagedPath)/Colossal.UI.Binding.dll" Private="false" />
+    <Reference Include="Colossal.UI" HintPath="$(ManagedPath)/Colossal.UI.dll" Private="false" />
+    <Reference Include="cohtml.Net" HintPath="$(ManagedPath)/cohtml.Net.dll" Private="false" />
+    <Reference Include="Unity.Collections" HintPath="$(ManagedPath)/Unity.Collections.dll" Private="false" />
+    <Reference Include="Unity.Entities" HintPath="$(ManagedPath)/Unity.Entities.dll" Private="false" />
+    <Reference Include="Unity.Mathematics" HintPath="$(ManagedPath)/Unity.Mathematics.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedPath)/UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(ManagedPath)/Newtonsoft.Json.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CheckGamePath" BeforeTargets="ResolveAssemblyReferences" Condition="!Exists('$(ManagedPath)/Game.dll')">
+    <Error Text="Cities: Skylines II isn't at '$(GamePath)'. Build with build.py, which finds it, or pass -p:GamePath=&lt;the game's folder&gt;." />
+  </Target>
+
+</Project>

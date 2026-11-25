@@ -1,0 +1,6 @@
+# A sample journal for a made-up city, for testers and the docs. Build it with:
+#   uv run plugin/skills/city-manager/scripts/journal.py build docs/sample-journal
+id = "riverton"
+city = "Riverton"
+aliases = []
+manager = "City Manager (sample)"

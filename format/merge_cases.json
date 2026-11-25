@@ -1,0 +1,23 @@
+{
+  "about": "The merge rule between the Mayor's side and the manager's, shared by the panel (stepDone, projectStatus) and journal.py (mayor_done, mayor_status), so the two can never disagree. ui.test.mjs and test_tools.py both run every case.",
+  "ticks": [
+    {"why": "a tick after the manager's change wins", "tick": {"done": true, "at": "2026-11-24T19:00:00Z"}, "item": {"done": false, "changed": "2026-11-24T18:00:00Z"}, "done": true},
+    {"why": "the manager's change after the tick wins", "tick": {"done": true, "at": "2026-11-24T19:00:00Z"}, "item": {"done": false, "changed": "2026-11-24T20:00:00Z"}, "done": false},
+    {"why": "a tie goes to the Mayor", "tick": {"done": false, "at": "2026-11-24T19:00:00Z"}, "item": {"done": true, "changed": "2026-11-24T19:00:00Z"}, "done": false},
+    {"why": "a step the manager never changed: the Mayor wins", "tick": {"done": true, "at": "2026-11-24T19:00:00Z"}, "item": {"done": false, "changed": ""}, "done": true},
+    {"why": "no tick: the manager's value", "tick": null, "item": {"done": true, "changed": ""}, "done": true},
+    {"why": "a tick that isn't an object is ignored", "tick": "yes", "item": {"done": false}, "done": false},
+    {"why": "an empty tick object counts, as not done", "tick": {}, "item": {"done": true, "changed": ""}, "done": false},
+    {"why": "a stamp that isn't text counts as no stamp", "tick": {"done": true, "at": 5}, "item": {"done": false, "changed": "2026-11-24T18:00:00Z"}, "done": false},
+    {"why": "only true is done", "tick": {"done": "true", "at": "2026-11-24T19:00:00Z"}, "item": {"done": true, "changed": ""}, "done": false},
+    {"why": "no stamps on either side: the Mayor", "tick": {"done": true}, "item": {"done": false}, "done": true}
+  ],
+  "status": [
+    {"why": "the Mayor's status after the manager's change", "mine": {"status": "hold", "at": "2026-11-24T11:00:00Z"}, "project": {"id": "roads", "status": "active", "statusChanged": "2026-11-24T10:00:00Z"}, "status": "hold", "byMayor": true},
+    {"why": "the manager changed it later", "mine": {"status": "hold", "at": "2026-11-24T09:00:00Z"}, "project": {"id": "roads", "status": "active", "statusChanged": "2026-11-24T10:00:00Z"}, "status": "active", "byMayor": false},
+    {"why": "a tie goes to the Mayor", "mine": {"status": "done", "at": "2026-11-24T10:00:00Z"}, "project": {"id": "roads", "status": "next", "statusChanged": "2026-11-24T10:00:00Z"}, "status": "done", "byMayor": true},
+    {"why": "unknown statuses are ignored", "mine": {"status": "<b>", "at": "2026-11-24T11:00:00Z"}, "project": {"id": "roads", "status": "next", "statusChanged": ""}, "status": "next", "byMayor": false},
+    {"why": "a built-in property name is no status", "mine": {"status": "constructor", "at": "2026-11-24T11:00:00Z"}, "project": {"id": "roads", "status": "constructor"}, "status": "active", "byMayor": false},
+    {"why": "a manager status that isn't one shows as in progress", "mine": null, "project": {"id": "x", "status": "nonsense"}, "status": "active", "byMayor": false}
+  ]
+}

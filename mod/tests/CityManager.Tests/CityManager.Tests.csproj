@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Offline checks for the mod's file layer (JournalStore): no game needed. Json.NET comes from the installed game,
+       so the tests run against the exact library the mod uses (13.0.2 from NuGet where the game isn't installed). Run with: python build.py test -->
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <!-- On Windows also .NET Framework 4.8: like the game's Mono there, it saves files through Windows' own functions. -->
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows'))">net10.0;net48</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GamePath Condition="'$(GamePath)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildProgramFiles32)\Steam\steamapps\common\Cities Skylines II</GamePath>
+    <GamePath Condition="'$(GamePath)' == ''">$(HOME)/.local/share/Steam/steamapps/common/Cities Skylines II</GamePath>
+    <GameJson>$(GamePath)/Cities2_Data/Managed/Newtonsoft.Json.dll</GameJson>
+  </PropertyGroup>
+
+  <!-- The game's own Json.NET when the game is installed; otherwise (CI) the same version from NuGet. -->
+  <ItemGroup Condition="Exists('$(GameJson)')">
+    <Reference Include="Newtonsoft.Json"><HintPath>$(GameJson)</HintPath></Reference>
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('$(GameJson)')">
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../src/CityManager/JournalStore.cs" Link="JournalStore.cs" />
+    <Compile Include="../../src/CityManager/CitySnapshot.cs" Link="CitySnapshot.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net48'" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>
