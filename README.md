@@ -129,6 +129,8 @@ write a journal by hand ([format/README.md](format/README.md)).
    It checks your setup (the mods, the game's folder, uv), asks a few questions about how you like to play, and makes
    your city's journal. Press Ctrl+J in the game and the welcome briefing is there.
 
+The [guide](docs/guide.md) walks through all of it, founding a new city included.
+
 From then on: tell Claude when you're about to play and when you've just played (see "How" above).
 
 ## Current progress
@@ -162,6 +164,7 @@ name. For a security or privacy problem, please tell me privately first (see [SE
 | **The formats** | `journal.json`, `mayor.json` and `city.json`: how the two talk to each other. Anyone can write a journal by hand | `format/` |
 | **City Planning Draft** | The build overlay, by nooolan (Paradox Mods 155935). Not ours: a required mod | |
 
+- How to use it, step by step, with flowcharts of the founding chat and of starting the city: [docs/guide.md](docs/guide.md)
 - What it touches, and what it sends where (nothing, to me): [SECURITY.md](SECURITY.md)
 - How the mod works (its tabs, files, privacy and keys): [docs/the-mod.md](docs/the-mod.md)
 - The file formats: [format/README.md](format/README.md)

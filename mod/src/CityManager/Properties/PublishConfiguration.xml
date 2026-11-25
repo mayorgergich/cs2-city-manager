@@ -1,0 +1,69 @@
+<Publish>
+	<!-- City Manager's Paradox Mods page. tools/publish.sh runs the game's ModPublisher with this file, from
+	     mod/src/CityManager (paths below are relative to it). After the first publish the script writes the new id
+	     into ModId: keep it there, it stops a second copy of the mod from being published. -->
+	<ModId Value="" />
+	<DisplayName Value="City Manager (beta)" />
+	<ShortDescription Value="An in-game journal and planner for your city. A City Manager (Claude) writes your plans between sessions; you build them." />
+	<!-- LongDescription and ChangeLog are read as written: keep their lines at column zero, or the page shows a code block. -->
+	<LongDescription>
+# City Manager
+
+You build the city. The City Manager keeps the plans and keeps you on track.
+
+City Manager is an in-game journal for your city. A City Manager writes it between your play sessions: Claude, Anthropic's AI, running in Claude Code on your own computer. Before you play, it writes tonight's plan. While you play, no AI runs. After you play, it reviews what you built and writes the next plan.
+
+## Features
+
+- A journal panel (Ctrl+J or the cones button) with Today, Projects, Notes, Wrap-up and City tabs
+- Tonight's checklist, with unfinished tasks carried over
+- Projects of any size, with steps to tick and *Show on map*
+- Notes pinned to where you're looking, answered by the City Manager
+- A short wrap-up, plus what changed since you loaded the city
+- Plans drawn over your city with City Planning Draft: numbered steps, with the exact road pieces to use
+- A snapshot of your city for the City Manager: roads, buildings, budget, demand, services, problems and transit
+- With the Claude Code plugin: a founding chat for a new city, and a first road plan drawn from a survey of its map
+- Works on its own as a notebook, without Claude
+
+## How to run it
+
+1. Subscribe. City Planning Draft is required and comes with it.
+2. In a city, press **Ctrl+J** and start a journal.
+3. For the City Manager: in Claude Code, install the plugin with one line (on GitHub), then tell Claude "Set up City Manager for my city".
+4. Before you play, tell Claude you're about to play. Then close Claude and play.
+5. When you're done, press *Done for today* and save. Then tell Claude you've just played.
+
+## Please read
+
+- **Made with AI, with limited human review.** I'm not a coder. Claude wrote the code, working closely with me, and no experienced programmer has reviewed it. Reviews are welcome.
+- **Privacy.** The mod never goes online and sends nothing to me. When you use Claude, your journal and city snapshot go to Anthropic under your own Claude account. The full security report is on GitHub.
+- **Claude Code needs a paid Claude plan.** Without it, City Manager is still a notebook.
+- **Beta.** Played on Linux; no Windows player has tested it yet. English only.
+- **Made for my own games.** I keep improving it as I play, and I'm sharing it in case it's useful to you too.
+
+How to use it, step by step: https://github.com/mayorgergich/cs2-city-manager/blob/main/docs/guide.md
+GitHub (code, setup, security report): https://github.com/mayorgergich/cs2-city-manager
+Discord: https://discord.gg/Rtea83Gnb9
+</LongDescription>
+	<Thumbnail Value="Properties/Thumbnail.png" />
+	<!-- Screenshots: 1280 x 720, a made-up city (Riverton) in a hidden test game, never a real city's. -->
+	<Screenshot Value="Properties/Screenshots/1-today.png" />
+	<Screenshot Value="Properties/Screenshots/2-projects.png" />
+	<Screenshot Value="Properties/Screenshots/3-project.png" />
+	<Screenshot Value="Properties/Screenshots/4-notes.png" />
+	<Tag Value="Code Mod" />
+	<ModVersion Value="0.8.0" />
+	<GameVersion Value="1.6.*" />
+	<Dependency Id="155935" DisplayName="City Planning Draft" />
+	<ChangeLog>
+First public beta: the journal panel (Today, Projects, Notes, Wrap-up, City), the city snapshot for the City Manager, and a floating, resizable window.
+</ChangeLog>
+	<!-- Cities: Skylines II has no AI-disclosure tags on Paradox Mods yet (its public game data lists none, 25 Nov 2026),
+	     so the disclosure is written out here and in the description. -->
+	<Disclosure>
+Made with AI: Claude, Anthropic's AI, wrote the code and the text, working closely with me. I'm not a programmer, and no experienced programmer has reviewed it yet.
+The mod itself contains no AI and never goes online. Claude runs only in Claude Code on your own computer, between play sessions, if you choose to use it.
+	</Disclosure>
+	<ExternalLink Type="discord" Url="https://discord.gg/Rtea83Gnb9" />
+	<ExternalLink Type="github" Url="https://github.com/mayorgergich/cs2-city-manager" />
+</Publish>
