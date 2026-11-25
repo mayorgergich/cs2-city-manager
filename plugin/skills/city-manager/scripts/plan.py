@@ -48,9 +48,22 @@ usage:
       again redraws. For a curving or planned street, use --origin X,Z --dir DX,DZ instead (with --length, and
       --spine-piece "<its piece>" for the spacing).
 
+  plan.py ship PLAN.json <city>/journal [--name "<City> <N>"] [--map-id ID] [--force] [--dry-run] [--width PX]
+      From the plan file to the game in one run: checks it against the newest snapshot (stops on anything to fix,
+      unless --force), exports the guide as the city's next number (`<City> <N+1>`, its map id from the city's last
+      guide), moves the city's older guides to Exports/old, and makes one build card per step number of every Now and
+      Next plan (`7 West, first street` and `7 Riverside homes` are both step 7): a close-up of all its items, a
+      Show-on-map place, and a tick once the snapshot shows all of them built. Each card is a journal step in the
+      project that links that plan (or a new one), in a marked block of the page. A step already there for the same
+      number, written by hand or by an earlier ship, keeps its id, its words and its tick; a new one takes its words
+      from the plan's "cards" (below), else from the item and its pieces. Then it points every project's link to the
+      new guide and builds the journal. --dry-run says what it would do and writes nothing.
+
 <src> is a journal source folder, a journal folder in ModsData, or a snapshot file, as for city.py and survey.py.
 
 Keys plan.py reads beyond cityplan.py's (cityplan.py ignores them, so the same file exports as it is):
+  cards:     {"7": "7 Riverside streets: five Two-Lane Roads ...", "8": {"text": "...", "note": "..."}} on a plan:
+             the journal step's words for a step number, for plan.py ship
   roads:     "piece"     the road piece by the name in the game's menu ("Four-Lane Road"; `city.py catalogue`)
              "tunnel": true, "bridge": true   the whole road is one (split a road into pieces where it changes)
              "existing": true                 already in the city: drawn for context, not checked
@@ -67,6 +80,7 @@ import math
 import os
 import re
 import sys
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -603,16 +617,17 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
         plans = [p for p in plans if p.get("name") in only]
         if not plans:
             raise SystemExit(f"No plan named {', '.join(only)!r} in the file.")
-    target = None
+    targets = []   # the card's items: one, or every item of a step number
     if around:
+        wanted = {n.casefold() for n in ([around] if isinstance(around, str) else around)}
         for p in plans:
             for kind in ("roads", "areas", "junctions"):
                 for it in arr(p.get(kind)):
-                    if isinstance(it, dict) and (it.get("name") or "").casefold() == around.casefold():
-                        target = (p, kind, it)
-        if not target:
+                    if isinstance(it, dict) and (it.get("name") or "").casefold() in wanted:
+                        targets.append((p, kind, it))
+        if not targets:
             raise SystemExit(f"No road, area or junction named {around!r} in the plans.")
-        pts = item_points(target[2])
+        pts = [q for t in targets for q in item_points(t[2])]
         b = sv.bounds([[x, x, z, z] for x, z in pts])
         pad = max(250.0, 0.25 * max(b[1] - b[0], b[3] - b[2]))
         box = [b[0] - pad, b[1] + pad, b[2] - pad, b[3] + pad]
@@ -637,11 +652,16 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
         box = [cx - 300, cx + 300, cz - 300, cz + 300]
     name = facts.get("city") or "The city"
     plan_names = ", ".join(p.get("name") or "?" for p in plans)
-    if target:
-        it = target[2]
+    tids = {id(t[2]) for t in targets}
+    if len(targets) == 1:
+        it = targets[0][2]
         head = title or f"{name}: {it.get('name')}"
-        sub = " · ".join(x for x in (target[0].get("name"), piece_of(it) and f"build with: {piece_of(it)}",
+        sub = " · ".join(x for x in (targets[0][0].get("name"), piece_of(it) and f"build with: {piece_of(it)}",
                                      "in a tunnel" if it.get("tunnel") else "on a bridge" if it.get("bridge") else "") if x)
+    elif targets:
+        head = title or f"{name}: {targets[0][2].get('name')}"
+        pieces = sorted({piece_of(t[2]) for t in targets if piece_of(t[2])})
+        sub = " · ".join(x for x in (targets[0][0].get("name"), pieces and "build with: " + ", ".join(pieces)) if x)
     else:
         head = title or f"{name}: the plan"
         sub = plan_names
@@ -668,8 +688,7 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
             colour = hex_colour(a.get("fill"), hex_colour(cityplan.AREA_COLOURS.get(a.get("type"), "#9CA3AF"), (156, 163, 175)))
             pic.polygon(pts, colour + (alpha,), outline=colour + (210,), width=2 if status in ("Base", "Later") else 3)
     pic.flush()
-    if target:
-        p, kind, it = target
+    for p, kind, it in targets:
         pts = item_points(it)
         glow = (255, 0, 200, 110)
         if kind == "roads":
@@ -678,6 +697,7 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
             pic.polygon(pts, (255, 0, 200, 50), outline=glow, width=14)
         else:
             pic.marker(*pts[0], "circle", glow, r=34, outline=None)
+    if targets:
         pic.flush()
     for p in ordered:
         status = status_of(p.get("name"))
@@ -729,7 +749,7 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
                 num = step_number(nm)
                 if status in ("Now", "Next", None) and num:
                     fill = (20, 20, 20) if status != "Next" else (90, 90, 90)
-                    if target and it is target[2]:
+                    if id(it) in tids:
                         fill = (200, 0, 160)
                     spots = [(cx, cz)]
                     if kind == "roads":
@@ -741,11 +761,11 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
                     free = next((q for q in spots if pic.free(*q, 17)), spots[0])
                     pic.badge(*free, num, fill=fill, r=15)
                     entry = f"{nm}" + (f" ({piece_of(it)})" if piece_of(it) else "")
-                    if entry not in keys and (not target or it is target[2]):
+                    if entry not in keys and (not targets or id(it) in tids):
                         keys.append(entry)
                 elif kind == "areas" or (kind == "roads" and status in ("Base", "Later") and zoom < 0.6):
                     pic.label(cx, cz, nm, size=15 if kind == "areas" else 13, colour=(30, 30, 30))
-                elif target and it is target[2]:
+                elif id(it) in tids:
                     pic.label(cx, cz, nm, size=17, colour=(150, 0, 120))
     for p in plans:
         for m in arr(p.get("markers")):
@@ -1182,7 +1202,7 @@ def main(argv):
     args = argv[1:]
     if len(args) >= 2 and args[0] == "map":
         return main_map(args[1], args[2:])
-    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid"):
+    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid", "ship"):
         print(__doc__)
         return 2
     cmd, plan_path, src = args[0], args[1], args[2]
@@ -1191,6 +1211,8 @@ def main(argv):
     def opt(flag, default=None):
         return rest[rest.index(flag) + 1] if flag in rest and rest.index(flag) + 1 < len(rest) else default
 
+    if cmd == "ship":
+        return main_ship(plan_path, src, rest, opt)
     if cmd == "grid":
         return main_grid(plan_path, city.load(sv.snapshot_file(src)), rest, opt)
     if cmd in ("built", "cards"):
@@ -1376,20 +1398,12 @@ def main_grid(plan_path, snap, rest, opt):
     return 0
 
 
-def main_cards(snap, plans, rest, opt):
-    out_dir = opt("--out-dir")
-    if not out_dir:
-        print("cards needs --out-dir DIR (the journal source's images folder, say)")
-        return 2
-    only = [rest[i + 1] for i, a in enumerate(rest) if a == "--only" and i + 1 < len(rest)]
-    width = min(max(int(opt("--width", 900)), 600), 1600)
-    out = Path(out_dir)
+def make_cards(snap, plans, out, width=900, facts=None, only=()):
+    """A close-up for every numbered item in the Now and Next plans (or the plans in `only`): rows of
+    (name, plan name, file, x, z, zoom)."""
+    out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    try:
-        facts = sv.survey(snap)
-    except ValueError:
-        print("The snapshot has no terrain part, so there's nothing to draw on.")
-        return 1
+    facts = facts or sv.survey(snap)
     rows, seen = [], set()
     for p in plans:
         status = status_of(p.get("name"))
@@ -1410,6 +1424,378 @@ def main_cards(snap, plans, rest, opt):
                 b = sv.bounds([[a, a, c, c] for a, c in q])
                 zoom = round(min(max(1.4 * max(b[1] - b[0], b[3] - b[2], 300.0), 400.0), 4000.0), -1)
                 rows.append((name, p.get("name"), file, x, z, zoom))
+    return rows
+
+
+# --- ship: the plan file to the game in one run
+
+REGION_START = "# >>> build cards from plan.py ship"
+REGION_END = "# <<< build cards"
+JUNCTION_WORDS = {"Roundabout": "roundabout", "Interchange": "interchange", "Underpass": "underpass", "Overpass": "overpass",
+                  "CrossingNoConnection": "crossing with no junction", "Normal": "junction"}
+
+
+def card_groups(plans, names):
+    """The numbered items of the plans named, one group per step number (`7 West, first street` and `7 Riverside homes`
+    are both step 7), in build order: [(plan, number, [(kind, item)])]."""
+    groups = {}
+    for p in plans:
+        if p.get("name") not in names:
+            continue
+        for kind in ("roads", "junctions", "areas"):
+            for it in arr(p.get(kind)):
+                if not isinstance(it, dict) or it.get("existing") or not item_points(it):
+                    continue
+                n = step_number(it.get("name"))
+                if n:
+                    groups.setdefault((p.get("name"), n.casefold()), (p, n, []))[2].append((kind, it))
+
+    def order(g):
+        m = re.match(r"(\d+)(.*)", g[1])
+        return (names.index(g[0].get("name")), int(m.group(1)), m.group(2))
+    return sorted(groups.values(), key=order)
+
+
+def card_note(items):
+    """A build card's note when the plan gives none: the pieces and how to build them."""
+    roads, bits = Counter(), []
+    metres = Counter()
+    for kind, it in items:
+        if kind == "roads":
+            key = (piece_of(it) or f"{it.get('class', 'Local').lower()} road") + (" in a tunnel" if it.get("tunnel") else " on a bridge" if it.get("bridge") else "")
+            roads[key] += 1
+            metres[key] += length(item_points(it))
+    for key, n in roads.items():
+        L = metres[key]
+        about = f"about {L:,.0f} m" if L < 100 else f"about {round(L, -1):,.0f} m" if L < 1000 else f"about {L / 1000:.1f} km"
+        bits.append(f"{key} ×{n} ({about} in all)" if n > 1 else f"{key}, {about}")
+    for kind, it in items:
+        if kind == "junctions":
+            bits.append(piece_of(it) or f"a {JUNCTION_WORDS.get(it.get('type'), 'junction')}")
+    zones = sorted({it.get("type") for kind, it in items if kind == "areas" and it.get("type") in ZONE_KINDS})
+    if zones:
+        bits.append("zone " + " and ".join(zones))
+    note = "; ".join(bits)
+    return note[:1].upper() + note[1:]
+
+
+def guides_of(city_name, exports):
+    pat = re.compile(r"^" + re.escape(city_name) + r" (\d+)\.cityplan\.json$", re.I)
+    found = []
+    for d in (exports, exports / "old"):
+        for f in d.glob("*.cityplan.json") if d.is_dir() else []:
+            m = pat.match(f.name)
+            if m:
+                found.append((int(m.group(1)), f))
+    return found
+
+
+def map_id_for(city_name, aliases, guides):
+    """The city's map id: from its newest guide, else from a planner folder named like the city. Never another city's."""
+    for _, f in sorted(guides, key=lambda g: g[1].stat().st_mtime, reverse=True):
+        try:
+            mid = json.loads(f.read_text(encoding="utf-8-sig")).get("map_id")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if mid:
+            return mid
+    root = Path(cityplan.ROOT)
+    for name in [city_name] + list(aliases):
+        doc = root / str(name) / "planning.cityplan.json"
+        if doc.exists():
+            try:
+                return json.loads(doc.read_text(encoding="utf-8-sig")).get("map_id") or str(name)
+            except (OSError, ValueError, AttributeError):
+                return str(name)
+    return None
+
+
+def split_page(text):
+    if not text.startswith("+++\n"):
+        raise SystemExit("a project page must start with a +++ front matter block")
+    end = text.find("\n+++", 3)
+    if end < 0:
+        raise SystemExit("a project page's front matter has no closing +++")
+    return text[4:end], text[end:]
+
+
+def steps_blocks(front):
+    """The [[steps]] tables of a front matter: [(first line, end line, id)]."""
+    lines = front.split("\n")
+    out, i = [], 0
+    while i < len(lines):
+        if lines[i].strip() == "[[steps]]":
+            j = i + 1
+            while j < len(lines) and not lines[j].lstrip().startswith(("[", REGION_START, REGION_END)):
+                j += 1
+            m = re.search(r'^\s*id\s*=\s*"([^"]*)"', "\n".join(lines[i + 1:j]), re.M)
+            out.append((i, j, m.group(1) if m else ""))
+            i = j
+        else:
+            i += 1
+    return out
+
+
+def number_key(n):
+    m = re.match(r"(\d+)(.*)", n or "")
+    return (int(m.group(1)), m.group(2)) if m else (10 ** 6, n or "")
+
+
+def ship_project(path, guide, city_name, plan_name, cards, status="active", dry=False):
+    """Writes the plan's build cards into the project page (made if it doesn't exist), keeping everything else. A step
+    already there for the same step number (by an earlier ship or by hand) keeps its id, its words and its tick; ship
+    gives it the fresh picture and place, and ticks it once the snapshot shows everything in it built. Two steps for one
+    number are left as they are. The cards go in one marked block, in number order, where the first of them was.
+    Returns (created, numbers left alone, the steps written)."""
+    import tomllib
+    created = not path.exists()
+    if created:
+        topic = re.sub(r"^\w+\s*·\s*", "", plan_name)
+        text = (f"+++\nid = {json.dumps(path.stem)}\ntitle = {json.dumps(topic, ensure_ascii=False)}\nscale = \"district\"\n"
+                f"status = \"{status}\"\npriority = 2\n"
+                f"summary = {json.dumps('Building ' + topic + ' from the guide ' + guide + '.', ensure_ascii=False)}\n+++\n")
+    else:
+        text = path.read_text(encoding="utf-8")
+    front, body = split_page(text)
+    try:
+        before = [st for st in tomllib.loads(front).get("steps", []) if isinstance(st, dict)]
+    except tomllib.TOMLDecodeError as e:
+        raise SystemExit(f"{path.name}: its front matter doesn't read ({e}); fix it first")
+    by_number = defaultdict(list)
+    for st in before:
+        n = step_number(str(st.get("text", "")))
+        if n and st.get("id"):
+            by_number[n.casefold()].append(st)
+    lines = front.split("\n")
+    raw = {sid: "\n".join(lines[a_:b_]).strip("\n") for (a_, b_, sid) in steps_blocks(front) if sid}
+    adopted, shared, steps, kept = set(), [], [], []
+    for c in cards:
+        old = by_number.get(c["number"].casefold(), [])
+        if len(old) > 1:   # two steps for one number: kept word for word, in their place in the order
+            shared.append(c["number"])
+            kept += [(number_key(c["number"]), str(o["id"]), raw.get(str(o["id"]))) for o in old if raw.get(str(o["id"]))]
+            continue
+        st = dict(c)
+        if old:
+            o = old[0]
+            w = obj(o.get("where"))
+            st.update(id=str(o["id"]), text=str(o.get("text") or c["text"]), note=str(o.get("note") or ""),
+                      done=c["done"] or bool(o.get("done")))
+            if w.get("label"):
+                st["where"] = dict(st["where"], label=str(w["label"])[:60])
+            adopted.add(st["id"])
+        steps.append(st)
+    moving = adopted | {k[1] for k in kept}
+    # what goes: the old block and the steps moving into the new one; the new block goes where the first of them was
+    drop = set()
+    start = next((i for i, l in enumerate(lines) if l.startswith(REGION_START)), None)
+    if start is not None:
+        end = next((i for i in range(start, len(lines)) if lines[i].startswith(REGION_END)), len(lines) - 1)
+        drop.update(range(start, end + 1))
+    blocks = steps_blocks(front)
+    for (a_, b_, sid) in blocks:
+        if sid in moving:
+            drop.update(range(a_, b_))
+    at = min(drop) if drop else (blocks[-1][1] if blocks else len(lines))
+    link = re.compile(r'^(\s*name\s*=\s*)"' + re.escape(city_name) + r' \d+"', re.I)
+    has_link = any(link.match(l) for i, l in enumerate(lines) if i not in drop)
+    region = [f"{REGION_START}: {guide}. Each ship redraws these steps' pictures and places and ticks what's built;",
+              "# their words are yours to change (or give them in the plan's \"cards\")."]
+    if not has_link:
+        region += ["[[plans]]", 'kind = "draft"', f"name = {json.dumps(guide, ensure_ascii=False)}",
+                   f"layers = [{json.dumps(plan_name, ensure_ascii=False)}]", ""]
+    entries = [(number_key(st["number"]), st["id"], None) for st in steps] + kept
+    by_id = {st["id"]: st for st in steps}
+    for _, sid, verbatim in sorted(entries, key=lambda e: e[0]):
+        if verbatim is not None:
+            region += [verbatim, ""]
+            continue
+        st = by_id[sid]
+        region += ["[[steps]]", f"id = {json.dumps(st['id'])}", f"text = {json.dumps(st['text'], ensure_ascii=False)}"]
+        if st.get("note"):
+            region.append(f"note = {json.dumps(st['note'], ensure_ascii=False)}")
+        if st.get("done"):
+            region.append("done = true")
+        if st.get("picture"):
+            region.append(f"picture = {json.dumps(st['picture'])}")
+        w = st.get("where")
+        if w:
+            region.append(f"where = {{ label = {json.dumps(w['label'], ensure_ascii=False)}, x = {w['x']}, z = {w['z']}, zoom = {w['zoom']} }}")
+        region.append("")
+    region.append(REGION_END)
+    out = []
+    for i, l in enumerate(lines + [""]):
+        if i == at:
+            if out and out[-1].strip():
+                out.append("")
+            out += region + [""]
+        if i < len(lines) and i not in drop:
+            out.append(link.sub(lambda m: m.group(1) + json.dumps(guide, ensure_ascii=False), l))
+    front = re.sub(r"\n{3,}", "\n\n", "\n".join(out)).rstrip("\n") + "\n"
+    try:
+        tomllib.loads(front)
+    except tomllib.TOMLDecodeError as e:
+        raise SystemExit(f"{path.name}: the new front matter wouldn't read ({e}); nothing written")
+    if not dry:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".md.tmp")
+        tmp.write_text("+++\n" + front + body, encoding="utf-8")
+        os.replace(tmp, path)
+    return created, shared, steps
+
+
+def project_linking(src, plan_name):
+    import tomllib
+    for f in sorted((src / "projects").glob("*.md")):
+        try:
+            meta = tomllib.loads(split_page(f.read_text(encoding="utf-8"))[0])
+        except (SystemExit, Exception):
+            continue
+        for pl in meta.get("plans", []) if isinstance(meta.get("plans"), list) else []:
+            if isinstance(pl, dict) and pl.get("kind", "draft") == "draft" and plan_name in (pl.get("layers") or []):
+                return f
+    return None
+
+
+def main_ship(plan_path, src, rest, opt):
+    import tomllib
+    import contextlib
+    import io
+    srcp = Path(src).expanduser()
+    if not (srcp / "journal.toml").exists():
+        raise SystemExit("ship needs the city's journal source folder (<city>/journal, with its journal.toml)")
+    cfg = tomllib.loads((srcp / "journal.toml").read_text(encoding="utf-8-sig"))
+    city_name = str(cfg.get("city") or "")
+    snap_path = city.snapshot_path(srcp)
+    snap = city.load(snap_path)
+    plans = load_plans(plan_path)
+    soon = [p.get("name") for p in plans if status_of(p.get("name")) in ("Now", "Next")]
+    if not soon:
+        raise SystemExit("No Now or Next plan in the file: nothing to ship (`<Status> · <Topic>`, guides.md).")
+    dry = "--dry-run" in rest
+    # 1. the guide's name and map id
+    exports = Path(cityplan.ROOT) / "Exports"
+    guides = guides_of(city_name, exports)
+    guide = opt("--name") or f"{city_name} {max((n for n, _ in guides), default=0) + 1}"
+    map_id = opt("--map-id") or map_id_for(city_name, cfg.get("aliases") or [], guides)
+    if not map_id:
+        raise SystemExit(f"No map id for {city_name}: open City Planning Draft once in the city, or pass --map-id.")
+    # 2. check
+    chk = Check(snap, plans, guide)
+    chk.run()
+    soon_problems = [pr for r in chk.results if r.get("status") in ("Now", "Next") for pr in r["problems"]]
+    errors = [pr for pr in soon_problems if pr["level"] == "error"]
+    if errors and "--force" not in rest:
+        print(chk.markdown(snap_path.name))
+        print("\nNot shipped: fix what's marked ✗ in the Now and Next plans first (or --force).")
+        return 1
+    # 3. one build card per step number
+    width = min(max(int(opt("--width", 900)), 600), 1600)
+    built = {it["name"]: it["status"] for r in Built(snap).run(plans) for it in r["items"]}
+    facts = None if dry else sv.survey(snap)
+    if not dry:
+        (srcp / "images").mkdir(parents=True, exist_ok=True)
+    by_plan = defaultdict(list)
+    for p, n, items in card_groups(plans, soon):
+        given = obj(p.get("cards")).get(n) or obj(p.get("cards")).get(n.casefold())
+        given = {"text": given} if isinstance(given, str) else obj(given)
+        names = [it.get("name") for _, it in items]
+        areas = [it.get("name") for kind, it in items if kind == "areas"]
+        text = str(given.get("text") or (names[0] if len(names) == 1 else areas[0] if len(areas) == 1 else names[0]))
+        if not step_number(text):
+            text = f"{n} {text}"
+        topic = re.sub(r"^\w+\s*·\s*", "", p.get("name"))
+        file = f"card-{slug(n)}-{slug(topic)}.png"
+        pts = [q for _, it in items for q in item_points(it)]
+        bx = sv.bounds([[x, x, z, z] for x, z in pts])
+        x, z = (centre_of(items[0][0], item_points(items[0][1])) if len(items) == 1 else ((bx[0] + bx[1]) / 2, (bx[2] + bx[3]) / 2))
+        zoom = round(min(max(1.4 * max(bx[1] - bx[0], bx[3] - bx[2], 300.0), 400.0), 4000.0), -1)
+        done = all(built.get(nm) == "built" for nm in names)
+        by_plan[p.get("name")].append({"number": n, "id": f"c-{slug(n)}", "text": text, "note": str(given.get("note") or card_note(items)),
+                                       "done": done, "picture": file, "items": names,
+                                       "where": {"label": text[:60], "x": round(x), "z": round(z), "zoom": int(zoom)}})
+    # 4. export the guide, then put this city's older guides away
+    if not dry:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cityplan.cmd_export([str(plan_path), "--name", guide, "--map-id", str(map_id), "--terrain", str(snap_path)])
+        new = exports / f"{guide}.cityplan.json"
+        for _, f in guides:
+            if f.parent == exports and f != new:
+                dest = exports / "old" / f.name
+                dest.parent.mkdir(exist_ok=True)
+                if dest.exists():
+                    dest = dest.with_name(f.name.replace(".cityplan.json", f" ({int(time.time())}).cityplan.json"))
+                os.replace(f, dest)
+    # 5. the projects, then every other project's link to the city's guide
+    touched, left, drawn = [], [], 0
+    for name in soon:
+        cards = by_plan.get(name, [])
+        if not cards:
+            continue
+        f = project_linking(srcp, name) or srcp / "projects" / f"{slug(re.sub(r'^\w+\s*·\s*', '', name))}.md"
+        state = "active" if status_of(name) == "Now" else "next"
+        created, shared, steps = ship_project(f, guide, city_name, name, cards, state, dry=True)
+        if not dry:
+            for st in steps:   # the pictures first, so the page never names one that isn't there
+                draw(snap, plans, srcp / "images" / st["picture"], around=st["items"],
+                     title=f"{facts.get('city') or city_name}: {st['where']['label']}", width=width, facts=facts)
+                drawn += 1
+            ship_project(f, guide, city_name, name, cards, state)
+        touched.append((f, name, len(steps), sum(1 for st in steps if st["done"]), created))
+        left += [(f.name, n) for n in shared]
+    relinked = 0
+    link = re.compile(r'^(\s*name\s*=\s*)"' + re.escape(city_name) + r' \d+"', re.M | re.I)
+    for f in sorted((srcp / "projects").glob("*.md")):
+        if f in [t[0] for t in touched]:
+            continue
+        text = f.read_text(encoding="utf-8")
+        new_text = link.sub(lambda m: m.group(1) + json.dumps(guide, ensure_ascii=False), text)
+        if new_text != text:
+            relinked += 1
+            if not dry:
+                f.write_text(new_text, encoding="utf-8")
+    # 6. build the journal
+    built_ok, build_out = True, ""
+    if not dry:
+        import journal  # noqa: PLC0415
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = journal.cmd_build(srcp)
+        built_ok, build_out = code == 0, out.getvalue().strip()
+    looks = sum(1 for pr in soon_problems if pr["level"] == "warn")
+    print(f"# {'Would ship' if dry else 'Shipped'}: {guide} (map id {map_id!r})\n")
+    print(f"- Checked against {snap_path.name}: {len(errors)} to fix in Now and Next" + (" (shipped anyway: --force)" if errors else "")
+          + (f", {looks} to look at (`plan.py check` lists them)" if looks else "") + ".")
+    if not dry:
+        print(f"- Guide: {exports / (guide + '.cityplan.json')}; this city's older guides are in Exports/old.")
+        print(f"- Build cards: {drawn} pictures in {srcp / 'images'}.")
+    for f, name, n, done, created in touched:
+        print(f"- {'New project' if created else 'Project'} {f.name}: {n} build-card step{'s' if n != 1 else ''} for {name!r}"
+              + (f", {done} built already (ticked)" if done else "") + ".")
+    for fname, n in left:
+        print(f"- {fname}: two steps start with {n}, so ship left them as they are (number them {n}a, {n}b to give each a card).")
+    if relinked:
+        print(f"- {relinked} other project{'s' if relinked != 1 else ''} now link{'s' if relinked == 1 else ''} to {guide}.")
+    if not dry:
+        print("- Journal: " + ("built." if built_ok else "NOT built:\n" + build_out))
+    print(f"\nFor the briefing: \"In the planner, Import latest file ({guide})\", then build from the Now plans.")
+    return 0 if built_ok else 1
+
+
+def main_cards(snap, plans, rest, opt):
+    out_dir = opt("--out-dir")
+    if not out_dir:
+        print("cards needs --out-dir DIR (the journal source's images folder, say)")
+        return 2
+    only = [rest[i + 1] for i, a in enumerate(rest) if a == "--only" and i + 1 < len(rest)]
+    width = min(max(int(opt("--width", 900)), 600), 1600)
+    out = Path(out_dir)
+    try:
+        rows = make_cards(snap, plans, out, width, only=only)
+    except ValueError:
+        print("The snapshot has no terrain part, so there's nothing to draw on.")
+        return 1
     if not rows:
         print("No numbered items in the Now and Next plans (or the plans named with --only), so no cards.")
         return 1

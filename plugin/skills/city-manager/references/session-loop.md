@@ -20,7 +20,8 @@ renamed street, the guide's order with `cityplan.py front`), revise the briefing
 `reports/<date>.md` written as a draft). (2) Fill every `TODO:` (the summary, an answer to every note and wrap-up
 answer, what you see, at most two decisions) and keep five to seven numbers. (3) Tick the project steps its "Built as
 planned" names. (4) `jp archive`, the next briefing from the plan you have, `jp build`, `jp ack`, `city.py keep`.
-(5) Send the debrief. (6) Only then, and only on a yes: the next streets (`plan.py grid`, `plan.py check`, the guide).
+(5) Send the debrief. (6) Only then, and only on a yes: the next streets (`plan.py grid`, then `plan.py ship`: the
+guide, the build cards and the journal in one run).
 
 ## Briefing (before the Mayor plays)
 

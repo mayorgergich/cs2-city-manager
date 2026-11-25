@@ -260,14 +260,15 @@ Do the parts the Mayor asked for (`wants`): the guide only with `"drafts"`, the 
 own (`plan.py` still checks and draws it; the plan file just never goes to the planner). Without `"briefing"`, end with
 a few lines in the chat on what to build first instead of step 4.
 
-1. **The guide.** The planner must have been opened once in the city (so its map id exists; `cityplan.py mapid`).
-   Export with the city's first number and the snapshot for ground heights:
-   `cityplan.py export plan.json --name "Riverton 1" --terrain <the snapshot file>`. Fix any `naming:` warning.
+1. **The guide.** `plan.py ship plan.json <city>/journal` (`guides.md` § Making one) does steps 1 to 3 in one run:
+   the guide as `Riverton 1`, one project per Now or Next plan with its build cards, and the journal built. The map id
+   comes from the planner's document for the city; before the planner has ever been opened there, pass the city's name
+   (`--map-id "Riverton"`). Write the steps' words first (below), in the plan's `cards` or the projects.
 2. **Projects**, with the same words as the plans: one per Now or Next plan ("First streets"), and one for the
    whole-map plan ("City plan", status `idea` or `next`, its pictures and the district table in its body). With a
    guide, link each to its plan rows (`[[plans]] kind = "draft"`, `name = "Riverton 1"`, `layers = ["Now · First
    streets"]`).
-3. **Build cards: one step per numbered item**, with the same number and words, so the Mayor can match them on screen
+3. **Build cards: one step per step number**, with the same number and words, so the Mayor can match them on screen
    (`guides.md` § Build cards). Each says exactly what to build: the piece by its menu name (from the catalogue), lanes
    and one-way or two-way, the junction's kind (roundabout size, lights or stop signs, a prebuilt interchange by name),
    and for a tunnel or bridge how deep or high. Then the close-up from `plan.py draw --around`, on its own line:

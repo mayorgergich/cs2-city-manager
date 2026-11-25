@@ -33,14 +33,15 @@ or junction to use. For every item in a Now or Next plan, the journal step gives
   menu names, Road Builder roads included, with lanes and cost; locked pieces are left out) or, for a building, park,
   prop or surface from the Mayor's packs, `mods.py find` (its menu name, pack, lot and cost),
   never from memory, and say when a choice is a suggestion rather than a must;
-- **a close-up picture** of that spot (the plan drawn over the city, the item marked), on its own line in the step's
-  project page or the briefing: `plan.py cards plan.json <city>/journal --out-dir <city>/journal/images` draws one for
-  every numbered Now and Next item (an item whose name starts with its step number, like `2 Cedar: ramp down`; items
-  without a number, and Later, Base and Done plans, get no card) and prints, for its journal step, `picture = "…"` and `where = {…}`: City Manager
-  0.9 shows them as Picture and Show on map buttons under the step (an older mod ignores them, so for an older mod put
-  the picture on its own line in the project page as well);
-- **the same number and words as the plan item**: plan item `2 Cedar: ramp down` and journal step
-  "2 Cedar: ramp down (Highway Oneway - 1 lane, about 20 m down)". The Mayor matches them on screen.
+- **a close-up picture** of that spot (the plan drawn over the city, the step's items marked) and a Show-on-map place:
+  `plan.py ship` (§ Making one) draws one per step number and writes it into the step as `picture = "…"` and
+  `where = {…}`. City Manager 0.9 shows them as Picture and Show on map buttons under the step (an older mod ignores
+  them, so for an older mod put the picture on its own line in the project page as well);
+- **the same number and words as the plan items**: plan item `2 Cedar: ramp down` and journal step
+  "2 Cedar: ramp down (Highway Oneway - 1 lane, about 20 m down)". The Mayor matches them on screen. One job of several
+  pieces is one step: `7 West, first street` to `7 West end street` and the area `7 Riverside homes` are all step 7,
+  one card. Two journal steps for one number (west and east) need `7a` and `7b` in the plan and the journal, or
+  ship leaves them as they are.
 
 **Street names go stale.** The game renames streets when roads are rebuilt: after one evening of rebuilding, three
 streets of a test city had new names.
@@ -60,11 +61,18 @@ choice wins, and the next guide follows what's really there.
 2. **Write a simple plan file** (see `cityplan.py`'s docstring): `{"plans": [{"name": "Now · Road fixes", "roads":
    [...], "areas": [...], "junctions": [...]}, ...]}`, in the order above. Roads need two or more points, areas three or
    more, and a junction names two roads of its own plan.
-3. **Export:** `cityplan.py export plan.json --name "<City> <N>"`. The map id comes from the
-   planner's own document for the city (it's the city's name when the planner first opened there, and doesn't change
-   when the city is renamed); pass `--map-id` only if there are several. Fix every `naming:` warning.
-4. **Link it in the journal:** in each project, `[[plans]] kind = "draft"`, `name = "<City> <N>"`, `layers = [the plan
-   rows it uses]`. Then `journal.py build` checks that the guide exists and has those plans.
+3. **Ship it, in one run:** `plan.py ship plan.json <city>/journal`. It checks the plan against the newest snapshot and
+   stops on anything to fix (`--force` ships anyway), exports the guide as `<City> <N+1>` with the map id of the
+   city's last guide (never another city's), puts the city's older guides in Exports/old, and writes one build-card
+   step per step number into the project that links each Now and Next plan (a new project if none does): the picture,
+   the place, and a tick once the snapshot shows the step built. A step already there for that number keeps its id,
+   its words and its tick, so write the words once, in the journal or in the plan (`"cards": {"7": {"text": "...",
+   "note": "..."}}` on the plan), and ship again after any change to the plan. Then it points every project's guide
+   link at the new guide and builds the journal. `--dry-run` says what it would do. The cards sit in a marked block of
+   the project page; pass `--map-id` for a city whose planner was never opened (founding: the city's name).
+4. **By hand, when ship can't:** `cityplan.py export plan.json --name "<City> <N>" --terrain <snapshot>` (the map id
+   from the planner's own document; `--map-id` if there are several; fix every `naming:` warning), then in each project
+   `[[plans]] kind = "draft"`, `name = "<City> <N>"`, `layers = [the plan rows it uses]`, and `journal.py build`.
 5. **Tell the Mayor** in the briefing: "In the planner, Import latest file (<City> <N>)", and which plan to build from.
    Import takes the newest file in Exports **whichever city it's for**: with more than one city, run `cityplan.py
    front "<City> <N>"` before each session so tonight's city's guide is the newest.
