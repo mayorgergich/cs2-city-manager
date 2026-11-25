@@ -1,8 +1,11 @@
 """Tests for survey.py, the map survey from the mod's city snapshot, on a small made-up map (made_up_map.py)."""
+import base64
 import contextlib
 import io
 import json
+import math
 import shutil
+import struct
 import sys
 import tempfile
 import unittest
@@ -126,6 +129,61 @@ class Survey(unittest.TestCase):
         self.assertIn("All zero", text)
         self.assertNotIn("[x ", text)
         self.assertNotRegex(text, r"-\d{3}", "no raw coordinates for the Mayor")
+
+    def test_no_stub_or_harbour_where_there_is_none(self):
+        self.assertEqual(self.s["highways"]["stubs"], [], "Entry Highway carries on as Main Street")
+        self.assertEqual(self.s["water"]["harbourSites"], [], "the river is only 3 m deep")
+        text = survey.report(self.s)
+        self.assertNotIn("highway stub", text)
+        self.assertNotIn("Deep water at the shore", text)
+
+    def test_highway_stub_and_deep_water_harbour_sites(self):
+        snap = mm.snapshot()
+        snap["nodes"].append({"id": 12, "x": -400.0, "z": 650.0, "y": 50.0})
+        snap["edges"].append({"id": 120, "prefab": 0, "kind": "highway", "a": 2, "b": 12, "length": 350.0,
+                              "pts": mm.bez(-400, 300, -400, 650), "street": 1, "lanes": [2, 2]})
+        water = struct.unpack(f"<{mm.N * mm.N}H", base64.b64decode(snap["terrain"]["water"]))
+        snap["terrain"]["water"] = mm.grid16([60 if v else 0 for v in water])      # the river 6 m deep
+        s = survey.survey(snap)
+        stubs = s["highways"]["stubs"]
+        self.assertEqual([(t["highway"], t["centre"]) for t in stubs], [("Entry Highway", [-400, 650])])
+        self.assertTrue(stubs[0]["where"] and stubs[0]["fromStart"])
+        sites = s["water"]["harbourSites"]
+        self.assertTrue(1 <= len(sites) <= 4, sites)
+        for a in sites:
+            self.assertGreaterEqual(a["depth"], survey.HARBOUR_DEPTH_M)
+            self.assertIsNotNone(a["highwayM"])
+            self.assertLess(abs(a["centre"][0] - (-560)), 2.5 * mm.CELL + 28, "on land within two cells of the river")
+            for b in sites:
+                if a is not b:
+                    self.assertGreaterEqual(math.dist(a["centre"], b["centre"]), survey.HARBOUR_SPACING_M - 1)
+        text = survey.report(s)
+        self.assertIn("**A highway stub:** Entry Highway stops", text)
+        self.assertIn("**Deep water at the shore**", text)
+        self.assertNotRegex(text, r"-\d{3}", "no raw coordinates for the Mayor")
+
+    def test_the_map_part_settings_and_links(self):
+        s = survey.survey(mm.snapshot(map_part=True))
+        self.assertEqual(s["settings"]["leftHandTraffic"], True)
+        rows = {(r["kind"], r["edge"].split(",")[0]): r for r in s["connections"]}
+        self.assertIn(("ship", "south edge"), rows)
+        self.assertIn(("air", "east edge"), rows)
+        self.assertEqual(len(rows[("power", "east edge")]["places"]), 1, "two links 11 m apart are one place")
+        self.assertIn(("water", "west edge"), rows)
+        self.assertEqual(sum(1 for r in s["connections"] if r["kind"] == "train"), 2, "the railway isn't counted twice")
+        text = survey.report(s)
+        self.assertIn("| Map | Riverton Valley, European theme |", text)
+        self.assertIn("| Traffic side | drives on the left: slip roads leave and join on the left |", text)
+        self.assertIn("| Game mode | NormalMode |", text)
+        self.assertIn("natural disasters off", text)
+        self.assertIn("| Shipping lane | south edge", text)
+        self.assertIn("| Power line | east edge", text)
+        self.assertNotIn("From the map's own file", text)
+        self.assertNotRegex(text, r"-\d{3}", "no raw coordinates for the Mayor")
+
+    def test_an_older_snapshot_says_the_traffic_side_is_unknown(self):
+        self.assertIn("not in the snapshot (City Manager 0.9 records it)", survey.report(self.s))
+        self.assertEqual(self.s["settings"], {})
 
     def test_road_builder_names(self):
         self.assertEqual(survey.piece_name("r4913eff1-0142-4ad8-9016-21f8a90e9b50-76561190000000000"), "a Road Builder road")

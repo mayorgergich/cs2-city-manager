@@ -24,7 +24,7 @@ still: a voice in the summary line, practical words in the tasks.
    - **Check the facts behind a task** against the latest facts about the city you have (`city.py summary` and `problems`, a facts tool's output, the Mayor's pinned notes, screenshots): street names, which junction is which, the order along a road. A simple rule the Mayor can follow on screen ("going south, every other junction") beats a list of names. Say when something is unchecked.
    - **Building recommendations:** say what a build would knock down when you can check it; otherwise say it's unchecked. Suggest a manual save before a big build.
    - **Build cards:** every task that builds something names the exact pieces and carries a close-up picture, with the same number and words as its plan item (`guides.md`). Re-read street names from the newest snapshot first (`city.py streets`, `city.py street <name>`): the game renames streets when roads are rebuilt. Take the pieces' names from `city.py catalogue`: the game's own menu names, only what the Mayor has unlocked, and what the next milestone brings.
-   - **The guide:** point at the newest guide, `<City> <N>`; the task reads "In the planner, Import latest file (<City> <N>)". Keep its plans' statuses in step with the briefing: what tonight's tasks build is **Now**. If that changes, export the guide again (`references/guides.md`). `journal.py build` warns about any page or task that names an older or moved guide, or a plan the guide doesn't have; fix every warning.
+   - **The guide:** point at the newest guide, `<City> <N>`; the task reads "In the planner, Import latest file (<City> <N>)". The planner's Import takes the newest file in its Exports folder, **whichever city it's for**, so with more than one city run `cityplan.py front "<City> <N>"` before the Mayor plays: it makes tonight's city's guide the newest. Keep its plans' statuses in step with the briefing: what tonight's tasks build is **Now**. If that changes, export the guide again (`references/guides.md`). `journal.py build` warns about any page or task that names an older or moved guide, or a plan the guide doesn't have; fix every warning.
 3. **Archive and write.**
    - **Revise the current briefing in place, without archiving it, when it hasn't been played:** the Mayor has ticked nothing on it and hasn't played since. That's the usual case, because the report writes the next briefing. Keep its task ids so nothing the Mayor ticks gets lost.
    - **After a session:** run `jp archive <city>/journal` (it moves `briefing.md` to `briefings/<id>.md`), then write the new `briefing.md` with the format in `journal-format.md`.
@@ -47,15 +47,22 @@ still: a voice in the summary line, practical words in the tasks.
      `journal.py`):
      - `city.py summary <city>/journal`: people, money, the budget, demand, jobs, happiness, power, problems, transit,
        and what changed this session; check its "Taken" time is after the Mayor's play (if not, they didn't save);
-     - `city.py changes <city>/journal`: what was built, upgraded and removed this session, by street (or since the last
-       report: `--before` the copy you kept in step 8);
+     - `city.py numbers <city>/journal --before kept`: the report's numbers, the last report's copy against now (the
+       session start when there's no copy yet); it says when nothing new was saved, or the city didn't run. `--toml`
+       prints them as `[[numbers]]` entries: pick the five to seven that matter;
+     - `city.py changes <city>/journal --before kept`: what was built, upgraded and removed, by street;
+     - `plan.py built <city>/manager/plan/plan.json <city>/journal --out <city>/journal/images/built-<date>.png`: which
+       items of the plan the city has now (built, partly built and where the gap is, not yet), and where a build
+       differs from its card (another piece, no tunnel, a plain junction where the card said a roundabout);
+     - `plan.py map <city>/journal --before kept --out <city>/journal/images/map-<date>.png`: a fresh map of the city
+       with what was built since marked in blue, for "What got built" and the City page;
      - `city.py problems` (warning icons by kind and street), `city.py services` (budgets; schools, clinics and pumps by
        how full they are), `city.py streets` / `city.py street <name>`.
    - If the city has a facts tool (`[tools] facts` in `manager/manager.toml`), run it too. Such a tool reads the city: population, money and the in-game date against the last report, the budget lines, often a fresh overview map for `<city>/journal/images/`. Follow what it prints, including its warnings:
      - **no save after the Mayor's session:** report from the journal, mark every claim as not checked (`after = "no save yet"` in `[[numbers]]`), and make "load your newest save and check X stuck" the first task of the next briefing;
      - **the same save as last time:** say so; there's nothing new to measure.
    - Without a snapshot or a facts tool, work from the journal, the Mayor's notes and screenshots, and ask for the two or three numbers that matter.
-3. **Look closer where it matters.** Check what the Mayor said they built, and what the wrap-up flags, against whatever shows the city. Compare each build with its card (`guides.md`, "Build cards"): the pieces used, and any street the game renamed. Say when something is a guess.
+3. **Look closer where it matters.** Check what the Mayor said they built, and what the wrap-up flags, against whatever shows the city. Compare each build with its card (`guides.md`, "Build cards") from `plan.py built`: the pieces used, and any street the game renamed. Ask about every "built differently" line: it may well be on purpose, and then the next guide follows what's there. Say when something is a guess.
 4. **Write `reports/<date>.md`** (format in `journal-format.md`):
    - a summary of two or three sentences;
    - `[[numbers]]` from the facts;
@@ -70,7 +77,7 @@ still: a voice in the summary line, practical words in the tasks.
    - the street-name table, if names changed;
    - the map, if a new one was drawn.
 6. **Update the projects:**
-   - tick steps the evidence proves done (`done = true`);
+   - tick steps the evidence proves done (`done = true`): `plan.py built`'s "Built as planned" list names them by the plan items' numbers and words, the same as the steps';
    - add a `[[log]]` line for anything that happened;
    - change statuses;
    - add new projects the Mayor started.
@@ -81,8 +88,8 @@ still: a voice in the summary line, practical words in the tasks.
    - a task the Mayor answered without ticking (a decision settled in the wrap-up) gets `done = true` and a `note` saying how it was settled, in the archived briefing's file;
    - anything else stays visible under "Still open from…" until it's done or carried.
 8. **Publish and acknowledge.** Run `jp build <city>/journal`, then `jp ack <city>/journal`. Keep a copy of the
-   snapshot the report used as `<city>/manager/snapshots/<date>.json` (the mod replaces `city.json` every save), so the
-   next report can compare with it: `city.py changes <city>/journal --before <that copy>`.
+   snapshot the report used: `city.py keep <city>/journal` (it goes to `<city>/manager/snapshots/<date>.json`, since the
+   mod replaces `city.json` every save), so the next report compares with it (`--before kept`).
 9. **Update the dossier** (plan table, watch list, places).
 
 ## Check-ins between sessions

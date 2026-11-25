@@ -388,3 +388,32 @@ test("the resize handles: two edges, the bottom, and two corners with grips, eac
     const saved = T.fitLayout({ mode: "floating", x: 300, y: 150, w: 650, bodyH: 500 }, { px: [1920, 1080], w: 1920, h: 1080, k: 1 });
     assert.equal(T.panelStyle(saved).left, "300rem");   // a saved window opens where the Mayor left it
 });
+
+test("text follows the player's text scale: font sizes, line heights and one-line controls grow, the rest stays", () => {
+    const style = { fontSize: "15rem", lineHeight: "20rem", padding: "6rem 8rem", marginTop: "4rem" };
+    assert.equal(T.textScaled(style, 1), style, "a scale of 1 changes nothing");
+    const big = T.textScaled(style, 1.5);
+    assert.deepEqual(big, { fontSize: "22.5rem", lineHeight: "30rem", padding: "6rem 8rem", marginTop: "4rem" });
+    assert.equal(T.textScaled(style, 1.5), big, "the same style scales once");
+    assert.deepEqual(T.textScaled({ width: "18rem", height: "18rem", lineHeight: "18rem" }, 1.2), { width: "21.6rem", height: "21.6rem", lineHeight: "21.6rem" });
+    assert.deepEqual(T.textScaled({ height: "30rem", fontSize: "15rem", flex: 1 }, 2), { height: "60rem", fontSize: "30rem", flex: 1 });
+    assert.deepEqual(T.textScaled({ height: "700rem", width: "590rem" }, 2), { height: "700rem", width: "590rem" }, "a panel's size isn't text");
+    assert.deepEqual(T.textScaled({ fontSize: "bold", lineHeight: "1.4" }, 2), { fontSize: "bold", lineHeight: "1.4" });
+    assert.equal(T.fontScale(), 1, "no page here: the default");
+    globalThis.document = { documentElement: { style: { getPropertyValue: () => " 1,25 " } } };
+    assert.equal(T.fontScale(), 1, "the game writes a dot; anything else is the default");
+    globalThis.document = { documentElement: { style: { getPropertyValue: () => "1.3" } } };
+    assert.equal(T.fontScale(), 1.3);
+    delete globalThis.document;
+});
+
+test("a step's build card: Show on map and Picture under the step, only for what it has", () => {
+    const b = T.budget();
+    const ctx = { base: "coui://x/images/", sizes: { "card-2.0a1b2c3d.png": [900, 1060] }, zoom: () => {} };
+    const both = T.StepTools({ b, ctx, step: { text: "2 Cedar: ramp down", picture: "card-2.0a1b2c3d.png", where: { x: 10, z: -20, zoom: 600 } } });
+    assert.equal(text(both), "Show on mapPicture");
+    assert.equal(T.StepTools({ b, ctx, step: { text: "x" } }), null, "nothing to show: no row");
+    assert.equal(text(T.StepTools({ b, ctx, step: { text: "x", picture: "missing.png" } }) || ""), "", "a picture the journal doesn't have isn't offered");
+    assert.equal(text(T.StepTools({ b, ctx, step: { text: "x", where: { x: "far", z: 1 } } }) || ""), "", "a place needs numbers");
+    assert.equal(text(T.StepTools({ b, ctx, step: { text: "x", picture: "../../etc.png", where: { x: 1, z: 2 } } })), "Show on map");
+});

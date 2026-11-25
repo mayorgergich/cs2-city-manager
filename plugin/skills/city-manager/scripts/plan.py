@@ -22,6 +22,19 @@ usage:
       --view plan (the default) fits the Now and Next plans, start the owned tiles, map the whole map. --around draws a
       close-up of one road, area or junction, marked, for its build card. --only (repeatable) draws only those plans.
 
+  plan.py built PLAN.json <src> [--all] [--out FILE.png] [--json OUT.json]
+      Which plan items the city has now, from the snapshot: each road as built, partly built (how much, and where the
+      gap is) or not yet, with the piece and street it was built as and where that differs from its card (another
+      piece, no tunnel); each junction (a roundabout, lights, an underpass) and each area (buildings and zoning
+      inside). Checks the Now, Next and Done plans (--all: every plan). --out draws them coloured by the answer.
+  plan.py map <src> --out FILE.png [--before FILE|kept|start] [--view city|start|map] [--title TEXT] [--width PX]
+      A fresh map of the city for the report and the City page: its roads with their names, districts, and what was
+      built since the snapshot before (the session start by default; kept: the copy the last report kept), marked,
+      with the buildings the Mayor placed.
+  plan.py cards PLAN.json <src> --out-dir DIR [--only "<plan>"]... [--width PX]
+      A close-up picture for every numbered item in the Now and Next plans, for its build card, and the journal lines
+      to go with each: the picture line and a Show-on-map place.
+
 <src> is a journal source folder, a journal folder in ModsData, or a snapshot file, as for city.py and survey.py.
 
 Keys plan.py reads beyond cityplan.py's (cityplan.py ignores them, so the same file exports as it is):
@@ -30,6 +43,8 @@ Keys plan.py reads beyond cityplan.py's (cityplan.py ignores them, so the same f
              "existing": true                 already in the city: drawn for context, not checked
   junctions: "piece"     a prebuilt junction from the catalogue ("Trumpet Intersection") or plain words ("a small
                          roundabout"); a catalogue name is checked, words are not
+  markers:   [{"name": "A", "position": [x, z], "note": "Braunton: flat, by the estuary"}]  labelled pins for a choice
+             the Mayor makes (two starts, two harbour sites); drawn, never checked or exported
 A plan's status comes from its name ("<Status> · <Topic>"): Now and Next get built soon, so they must sit on owned tiles
 and name pieces the Mayor can build; Later and Base are the long-term picture. The check works on the snapshot's 56 m
 terrain grid: grades are about right over 40 m, not exact, and a creek narrower than the grid can be missed.
@@ -565,11 +580,11 @@ JUNCTION_MARKS = {"Interchange": ("diamond", (220, 40, 40)), "Roundabout": ("rin
                   "Ignored": ("circle", (180, 180, 180))}
 
 
-def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=1600):
+def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=1600, facts=None):
     terrain = sv.Terrain(snap)
     tiles = sv.Tiles(snap)
     net = sv.Network(snap)
-    facts = sv.survey(snap)
+    facts = facts or sv.survey(snap)
     st = facts["start"]
     if only:
         plans = [p for p in plans if p.get("name") in only]
@@ -596,7 +611,7 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
         box = [b[0] - pad, b[1] + pad, b[2] - pad, b[3] + pad]
     else:
         near = [p for p in plans if STATUS_ORDER.get(status_of(p.get("name")), 3) >= 3] or plans
-        pts = [q for p in near for kind in ("roads", "areas", "junctions") for it in arr(p.get(kind)) if isinstance(it, dict) for q in item_points(it)]
+        pts = [q for p in near for kind in ("roads", "areas", "junctions", "markers") for it in arr(p.get(kind)) if isinstance(it, dict) for q in item_points(it)]
         if not pts:
             b = st["box"]
         else:
@@ -719,6 +734,14 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
                     pic.label(cx, cz, nm, size=15 if kind == "areas" else 13, colour=(30, 30, 30))
                 elif target and it is target[2]:
                     pic.label(cx, cz, nm, size=17, colour=(150, 0, 120))
+    for p in plans:
+        for m in arr(p.get("markers")):
+            pts = item_points(m) if isinstance(m, dict) else []
+            if pts:
+                tag = str(m.get("name") or "?")[:3]
+                pic.badge(*pts[0], tag, fill=(200, 0, 120), r=18)
+                if m.get("note"):
+                    keys.append(f"{tag}: {str(m['note'])[:80]}")
     legend = [("line", CLASS_STYLE[c][0], c.lower() if c != "Local" else "local street") for c in CLASS_STYLE if c in used_classes]
     if "Next" in used_status:
         legend.append(("dash", (90, 90, 90), "next (dashed)"))
@@ -737,9 +760,416 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
     return out
 
 
+# --- what's built: the plan against the city
+
+BUILT_NEAR = 20.0        # metres: a city road this close to a planned line, and running the same way, counts as built
+BUILT_FULL = 0.85        # a road with this share of its length built is built
+BUILT_PART = 0.15        # below this share it's not built yet (a crossing street touches a few metres of any line)
+JUNCTION_NEAR = 45.0     # metres from a planned junction to the city's junction that answers it
+ROUNDABOUT_NEAR = 80.0   # a roundabout's nodes sit on its ring
+RESULT = {"built": ((30, 150, 60), "✓ built"), "partly": ((235, 150, 0), "◐ partly"), "not yet": ((120, 120, 132), "✗ not yet"),
+          "different": ((130, 60, 200), "≠ built differently")}
+ZONE_KINDS = {"Residential": {"residential"}, "Commercial": {"commercial"}, "Industrial": {"industrial"}, "Office": {"office"}}
+
+
+class NearIndex:
+    """The city's roads as short segments in a grid of 60 m cells, for "the nearest road to this point"."""
+
+    CELL = 60.0
+
+    def __init__(self, edges):
+        self.cells = defaultdict(list)
+        for e in edges:
+            line = e["line"]
+            for a, b in zip(line, line[1:]):
+                for k in self._keys(a, b):
+                    self.cells[k].append((a, b, e))
+
+    def _keys(self, a, b):
+        s = self.CELL
+        x0, x1 = sorted((a[0], b[0]))
+        z0, z1 = sorted((a[1], b[1]))
+        return [(i, j) for i in range(int(math.floor(x0 / s)), int(math.floor(x1 / s)) + 1)
+                for j in range(int(math.floor(z0 / s)), int(math.floor(z1 / s)) + 1)]
+
+    def near(self, x, z, radius, heading=None):
+        """(distance, edge) of the nearest segment within radius; with a heading (dx, dz), only segments running
+        roughly the same way (within about 35 degrees), so a street crossing the line doesn't count."""
+        best, s = None, self.CELL
+        for i in range(int(math.floor((x - radius) / s)), int(math.floor((x + radius) / s)) + 1):
+            for j in range(int(math.floor((z - radius) / s)), int(math.floor((z + radius) / s)) + 1):
+                for a, b, e in self.cells.get((i, j), []):
+                    d = nearest([a, b], (x, z))[0]
+                    if d > radius or (best and d >= best[0]):
+                        continue
+                    if heading:
+                        sx, sz = b[0] - a[0], b[1] - a[1]
+                        n = math.hypot(sx, sz) * math.hypot(*heading)
+                        if n > 1e-9 and abs(sx * heading[0] + sz * heading[1]) / n < 0.82:
+                            continue
+                    best = (d, e)
+        return best
+
+
+def inside(poly, x, z):
+    hit = False
+    for (x1, z1), (x2, z2) in zip(poly, poly[1:] + poly[:1]):
+        if (z1 > z) != (z2 > z) and x < x1 + (z - z1) * (x2 - x1) / (z2 - z1):
+            hit = not hit
+    return hit
+
+
+def centre_of(kind, pts):
+    if kind == "roads":
+        samples = sample(pts, 10.0)
+        half = samples[-1][2] / 2
+        x, z, _ = min(samples, key=lambda q: abs(q[2] - half))
+        return x, z
+    return sum(q[0] for q in pts) / len(pts), sum(q[1] for q in pts) / len(pts)
+
+
+def level(e):
+    el = [v for v in arr(e.get("elevation")) if isinstance(v, (int, float))]
+    if e.get("tunnel") or (el and min(el) < -3):
+        return "under"
+    if e.get("bridge") or (el and max(el) > 3):
+        return "over"
+    return "ground"
+
+
+class Built:
+    def __init__(self, snap):
+        self.snap = snap
+        self.net = sv.Network(snap)
+        self.roads = self.net.by_kind(*city.ROAD_KINDS)
+        self.index = NearIndex(self.roads)
+        self.by_class = {"highway": NearIndex(self.net.by_kind("highway")), "road": NearIndex(self.net.by_kind("road"))}
+        inc = self.net.incident()
+        self.degree = {nid: sum(1 for e in es if e.get("kind") in city.ROAD_KINDS) for nid, es in inc.items()}
+        prefabs = arr(snap.get("prefabs"))
+        self.buildings = [dict(b, prefabName=city.name_of(prefabs, b.get("prefab"))) for b in arr(snap.get("buildings")) if isinstance(b, dict)]
+        self.districts = [d for d in arr(snap.get("districts")) if isinstance(d, dict)]
+
+    def road(self, r):
+        pts = item_points(r)
+        samples = sample(pts, 10.0)
+        if len(samples) < 2 or samples[-1][2] < 1:
+            return None
+        hits = []
+        index = self.by_class["highway" if r.get("class") == "Highway" else "road"]   # a street along a highway isn't built
+        for i, (x, z, _) in enumerate(samples):
+            a, b = samples[max(i - 1, 0)], samples[min(i + 1, len(samples) - 1)]
+            hits.append(index.near(x, z, BUILT_NEAR, (b[0] - a[0], b[1] - a[1])))
+        share = sum(1 for h in hits if h) / len(hits)
+        status = "built" if share >= BUILT_FULL else "partly" if share >= BUILT_PART else "not yet"
+        res = {"status": status, "share": round(share * 100), "length": round(samples[-1][2])}
+        found = [h[1] for h in hits if h]
+        notes = []
+        if found:
+            pieces = Counter(sv.piece_name(e["title"]) for e in found)
+            streets = Counter(e["streetName"] for e in found if e["streetName"])
+            levels = Counter(level(e) for e in found)
+            res["piece"] = pieces.most_common(1)[0][0]
+            res["street"] = streets.most_common(1)[0][0] if streets else ""
+            want = piece_of(r)
+            if want and want.casefold() != res["piece"].casefold() and res["piece"] != "a Road Builder road":
+                notes.append(f"the card said {want}")
+            if r.get("tunnel") and levels["under"] < len(found) / 2:
+                notes.append("not in a tunnel: the card said a tunnel")
+            elif r.get("bridge") and levels["over"] < len(found) / 2:
+                notes.append("not on a bridge: the card said a bridge")
+            elif not r.get("tunnel") and not r.get("bridge") and levels["under"] > len(found) / 2:
+                notes.append("built as a tunnel")
+        if status == "partly":
+            gap = [(x, z) for (x, z, _), h in zip(samples, hits) if not h]
+            cx, cz = centre_of("roads", pts)
+            gx, gz = sum(q[0] for q in gap) / len(gap), sum(q[1] for q in gap) / len(gap)
+            if math.hypot(gx - cx, gz - cz) < 0.15 * samples[-1][2]:
+                notes.insert(0, "a gap in the middle")
+            else:
+                notes.insert(0, f"missing toward the {sv.direction(gx - cx, gz - cz)}")
+        if notes and status == "built":
+            status = res["status"] = "different" if any(n.startswith(("the card said", "not in", "not on")) for n in notes) else status
+        res["notes"] = notes
+        return res
+
+    def nodes_near(self, x, z, radius):
+        out = []
+        for nid, n in self.net.nodes.items():
+            d = math.hypot((n.get("x") or 0) - x, (n.get("z") or 0) - z)
+            if d <= radius:
+                out.append((d, nid, n))
+        return sorted(out, key=lambda q: q[0])
+
+    def junction(self, j):
+        pos = arr(j.get("position"))
+        if len(pos) < 2:
+            return None
+        x, z = float(pos[0]), float(pos[1])
+        typ = j.get("type") or "Normal"
+        joins = [(d, n) for d, nid, n in self.nodes_near(x, z, JUNCTION_NEAR) if self.degree.get(nid, 0) >= 3]
+        notes = []
+        if typ == "Roundabout":
+            ring = [n for d, nid, n in self.nodes_near(x, z, ROUNDABOUT_NEAR) if n.get("roundabout")]
+            if ring:
+                status = "built"
+            elif joins:
+                status = "different"
+                notes.append("a plain junction" + (" with traffic lights" if any(n.get("lights") for _, n in joins) else "") +
+                             ": the card said a roundabout")
+            else:
+                status = "not yet"
+        elif typ in ("Underpass", "Overpass", "CrossingNoConnection"):
+            levels = set()
+            for (d, e) in [self.index.near(x + dx, z + dz, JUNCTION_NEAR) or (None, None) for dx, dz in ((0, 0), (25, 0), (-25, 0), (0, 25), (0, -25))]:
+                if e:
+                    levels.add(level(e))
+            close = [p for p in self.roads if any(math.hypot(q[0] - x, q[1] - z) <= JUNCTION_NEAR for q in p["line"])]
+            levels |= {level(e) for e in close}
+            if len(levels) >= 2 and not [1 for d, n in joins if d < 20]:
+                status = "built"
+            elif joins and joins[0][0] < 20:
+                status = "different"
+                notes.append(f"the roads meet at a junction: the card said {('an ' + typ.lower()) if typ != 'CrossingNoConnection' else 'a crossing without a junction'}")
+            elif close:
+                status = "partly"
+                notes.append("one road is there, the crossing isn't yet")
+            else:
+                status = "not yet"
+        elif typ == "Interchange":
+            ramps = [e for e in self.roads if sv.is_ramp(e) and any(math.hypot(q[0] - x, q[1] - z) <= 300 for q in e["line"])]
+            status = "built" if len(ramps) >= 2 else "partly" if ramps else "not yet"
+            if ramps:
+                notes.append(f"{len(ramps)} ramp pieces")
+        else:
+            status = "built" if joins else "not yet"
+        if status in ("built", "different") and joins:
+            lights = any(n.get("lights") for _, n in joins)
+            want = (piece_of(j) or "").casefold()
+            if "light" in want and not lights:
+                notes.append("no traffic lights: the card said lights")
+                status = "different"
+            elif lights and typ != "Roundabout" and "light" not in want:
+                notes.append("with traffic lights")
+        return {"status": status, "notes": notes}
+
+    def area(self, a):
+        poly = item_points(a)
+        if len(poly) < 3:
+            return None
+        here = [b for b in self.buildings if inside(poly, b.get("x") or 0, b.get("z") or 0)]
+        kinds = Counter(b.get("kind") for b in here)
+        want = ZONE_KINDS.get(a.get("type"))
+        cells = built_cells = 0
+        for e in self.roads:
+            zc = arr(e.get("zoned"))
+            if len(zc) == 2 and inside(poly, *e["line"][len(e["line"]) // 2]):
+                cells += zc[0] or 0
+                built_cells += zc[1] or 0
+        match = sum(v for k, v in kinds.items() if (k in want if want else k != "other"))
+        districts = [d.get("name") for d in self.districts if len(arr(d.get("outline"))) >= 3 and
+                     inside([(q[0], q[1]) for q in d["outline"]], *centre_of("areas", poly))]
+        notes = []
+        if here:
+            notes.append(f"{len(here):,} buildings ({', '.join(f'{k} {v:,}' for k, v in kinds.most_common(3))})")
+        if cells:
+            notes.append(f"{cells:,} zoned cells, {built_cells:,} with a building")
+        if districts:
+            notes.append("in the district " + ", ".join(districts))
+        status = "built" if match else "partly" if cells or here or districts else "not yet"
+        if not here and not cells:
+            notes.append("nothing zoned or built inside yet")
+        return {"status": status, "notes": notes}
+
+    def run(self, plans, every=False):
+        out = []
+        for p in plans:
+            status = status_of(p.get("name"))
+            if not every and status in ("Base", "Later"):
+                continue
+            items = []
+            for kind in ("roads", "junctions", "areas"):
+                for it in arr(p.get(kind)):
+                    if not isinstance(it, dict) or it.get("existing") or not item_points(it):
+                        continue
+                    res = {"roads": self.road, "junctions": self.junction, "areas": self.area}[kind](it)
+                    if res:
+                        items.append(dict(res, name=it.get("name") or f"(a {kind[:-1]})", kind=kind[:-1],
+                                          at=[round(v) for v in centre_of(kind, item_points(it))]))
+            items.sort(key=lambda it: (int(re.match(r"\d+", step_number(it["name"]) or "").group()) if step_number(it["name"]) else 10 ** 6, it["name"]))
+            out.append({"plan": p.get("name") or "?", "status": status, "items": items})
+        return out
+
+
+def built_markdown(results, path, snap):
+    c = obj(snap.get("city"))
+    lines = [f"# Built so far: {c.get('name') or '?'}\n",
+             f"From {path.name}, taken {city.local_time(snap.get('taken'))} (in game {obj(c.get('date')).get('text') or '?'}). "
+             "Roads count as built where a city road runs along the planned line (within 20 m).\n"]
+    done = []
+    for r in results:
+        if not r["items"]:
+            continue
+        lines += [f"## {r['plan']}\n", "| Item | Built? | What's there |", "|---|---|---|"]
+        for it in r["items"]:
+            what = []
+            if it["kind"] == "road" and it.get("piece"):
+                what.append(it["piece"] + (f" on {it['street']}" if it.get("street") else "") + f" ({it['length']:,} m planned)")
+            what += it.get("notes", [])
+            mark = RESULT[it["status"]][1] + (f", {it['share']}%" if it["status"] == "partly" and "share" in it else "")
+            lines.append(f"| {it['name']} | {mark} | {'; '.join(what)} |")
+            if it["status"] == "built" and step_number(it["name"]):
+                done.append(it["name"])
+        lines.append("")
+    if done:
+        lines.append(f"**Built as planned** (the journal steps with the same number and words): {', '.join(done)}. Tick those "
+                     "the Mayor hasn't; where their tick and this disagree, keep their tick and say why in a log line.")
+    else:
+        lines.append("Nothing in these plans is built as planned yet.")
+    return "\n".join(lines)
+
+
+def draw_built(snap, plans, results, out, width=1600, facts=None):
+    terrain = sv.Terrain(snap)
+    net = sv.Network(snap)
+    facts = facts or sv.survey(snap)
+    by_name = {(r["plan"], it["name"]): it for r in results for it in r["items"]}
+    shown = [(p, kind, it) for p in plans for kind in ("areas", "roads", "junctions") for it in arr(p.get(kind))
+             if isinstance(it, dict) and (p.get("name") or "?", it.get("name") or "") in by_name]
+    pts = [q for _, _, it in shown for q in item_points(it)]
+    b = sv.bounds([[x, x, z, z] for x, z in pts]) if pts else facts["start"]["box"]
+    pad = max(200.0, 0.12 * max(b[1] - b[0], b[3] - b[2]))
+    box = [b[0] - pad, b[1] + pad, b[2] - pad, b[3] + pad]
+    c = obj(snap.get("city"))
+    pic = sv.MapPicture(terrain, box, width, f"{c.get('name') or 'The city'}: built so far",
+                        f"the plan against the city, {obj(c.get('date')).get('text') or ''}")
+    sv.draw_network(pic, net, faint=True, names=pic.scale >= 0.25)
+    pic.flush()
+    used, notes = set(), []
+    for p, kind, it in shown:
+        res = by_name[(p.get("name") or "?", it.get("name") or "")]
+        colour = RESULT[res["status"]][0]
+        used.add(res["status"])
+        q = item_points(it)
+        if kind == "areas":
+            pic.polygon(q, colour + (45,), outline=colour + (230,), width=4)
+        elif kind == "roads":
+            pic.line(q, colour, 7, dash=(10, 6) if res["status"] == "not yet" else None, casing=(30, 30, 30))
+        else:
+            pic.marker(*q[0], "circle", colour, r=12, outline=(20, 20, 20))
+    pic.flush()
+    for p, kind, it in shown:
+        res = by_name[(p.get("name") or "?", it.get("name") or "")]
+        num = step_number(it.get("name"))
+        if num:
+            x, z = centre_of(kind, item_points(it))
+            pic.badge(x, z, num, fill=RESULT[res["status"]][0], r=15)
+            notes.append(f"{it.get('name')}: {RESULT[res['status']][1].split(' ', 1)[1]}")
+    legend = [("line", RESULT[k][0], RESULT[k][1].split(" ", 1)[1]) for k in RESULT if k in used]
+    legend.append(("line", (90, 90, 90), "the city's roads"))
+    notes.sort(key=lambda k_: (int(re.match(r"\d+", k_).group()) if re.match(r"\d+", k_) else 10 ** 6, k_))
+    pic.finish(legend, notes[:14] + ([f"… and {len(notes) - 14} more"] if len(notes) > 14 else [])).save(out, optimize=True)
+    return out
+
+
+def draw_city_map(snap, out, then=None, view="city", title=None, width=1600, since_label=""):
+    """The city now, with what was built since `then` marked."""
+    terrain = sv.Terrain(snap)
+    net = sv.Network(snap)
+    tiles = sv.Tiles(snap)
+    facts = sv.survey(snap)
+    st = facts["start"]
+    c = obj(snap.get("city"))
+    own = [e for e in net.by_kind("road") if not any(net.nodes.get(e.get(k), {}).get("outside") for k in ("a", "b"))]
+    if view == "map":
+        box = [*terrain.extent, *terrain.extent]
+    elif view == "start" or not own:
+        b = st["box"]
+        pad = 0.25 * tiles.size
+        box = [b[0] - pad, b[1] + pad, b[2] - pad, b[3] + pad]
+    else:
+        b = sv.bounds([[q[0], q[0], q[1], q[1]] for e in own for q in e["line"]])
+        pad = max(250.0, 0.1 * max(b[1] - b[0], b[3] - b[2]))
+        box = [b[0] - pad, b[1] + pad, b[2] - pad, b[3] + pad]
+    new_edges, gone, placed = [], [], []
+    if then is not None:
+        nodes_now, nodes_then = city.node_places(snap), city.node_places(then)
+        before = {city.edge_key(e, nodes_then): e for e in arr(then.get("edges")) if isinstance(e, dict) and not e.get("owned")
+                  and e.get("kind") in city.ROAD_KINDS + city.RAIL_KINDS}
+        now_keys = set()
+        for e in net.edges:
+            k = city.edge_key(e, nodes_now)
+            now_keys.add(k)
+            if k not in before and e.get("kind") in city.ROAD_KINDS + city.RAIL_KINDS:
+                new_edges.append(e)
+        gone = [sv.bezier(arr(e.get("pts"))) for k, e in before.items() if k not in now_keys and len(arr(e.get("pts"))) >= 2]
+        prefabs = arr(snap.get("prefabs"))
+        old_b = {(round(b.get("x", 0)), round(b.get("z", 0))) for b in arr(then.get("buildings")) if isinstance(b, dict)}
+        zoned = ("residential", "commercial", "industrial", "office")
+        placed = [b for b in arr(snap.get("buildings")) if isinstance(b, dict) and b.get("kind") not in zoned
+                  and (round(b.get("x", 0)), round(b.get("z", 0))) not in old_b]
+        for b in placed:
+            b.setdefault("name", city.name_of(prefabs, b.get("prefab")))
+    head = title or f"{c.get('name') or 'The city'}: {obj(c.get('date')).get('text') or 'now'}"
+    sub = (f"built since {since_label}: blue" if new_edges else f"nothing new since {since_label}" if then is not None else "")
+    pic = sv.MapPicture(terrain, box, width, head, sub)
+    for t in tiles.owned() if not st["allOwned"] else []:
+        pic.rect(t["box"], (30, 30, 30, 120), 2)
+    for d in arr(snap.get("districts")):
+        q = [(v[0], v[1]) for v in arr(obj(d).get("outline")) if len(v) >= 2]
+        if len(q) >= 3:
+            pic.polygon(q, (120, 90, 200, 30), outline=(120, 90, 200, 200), width=3)
+    pic.flush()
+    for line in gone:
+        pic.line(line, (200, 40, 40, 200), 3, dash=(6, 6))
+    sv.draw_network(pic, net, faint=False, names=False)
+    pic.flush()
+    for e in new_edges:
+        pic.line(e["line"], (0, 140, 255), 7, casing=(10, 40, 90))
+    pic.flush()
+    for d in arr(snap.get("districts")):
+        q = [(v[0], v[1]) for v in arr(obj(d).get("outline")) if len(v) >= 2]
+        if len(q) >= 3 and obj(d).get("name"):
+            pic.label(*centre_of("areas", q), d["name"], size=18, colour=(80, 50, 150))
+    for b in placed[:40]:
+        pic.marker(b.get("x", 0), b.get("z", 0), "square", (0, 140, 255), r=8)
+    if pic.scale >= 0.2:
+        done = set()
+        for e in sorted(net.by_kind("road", "highway"), key=lambda e: -(e.get("length", 0) or 0)):
+            name = e["streetName"]
+            if name and name not in done and pic.visible(e["line"], margin=-40):
+                m = e["line"][len(e["line"]) // 2]
+                if pic.label(m[0], m[1], name, size=14, colour=(40, 40, 40)):
+                    done.add(name)
+    legend = [("line", (90, 90, 90), "roads"), ("line", (205, 40, 40), "highways")]
+    if new_edges:
+        legend.append(("line", (0, 140, 255), f"built since {since_label}"))
+    if gone:
+        legend.append(("dash", (200, 40, 40), "removed"))
+    if placed:
+        legend.append(("box", (0, 140, 255), "placed since"))
+    if arr(snap.get("districts")):
+        legend.append(("outline", (120, 90, 200), "districts"))
+    notes = []
+    if new_edges:
+        notes.append(f"New: {city.km(sum(e.get('length', 0) or 0 for e in new_edges))} of road and track" +
+                     (f", removed {len(gone)} pieces" if gone else "") + ".")
+    named = [b.get("name") for b in placed if b.get("name")]
+    if named:
+        notes.append("Placed: " + ", ".join(f"{n} ×{k}" if k > 1 else n for n, k in Counter(named).most_common(8)) + ".")
+    pic.finish(legend, notes).save(out, optimize=True)
+    return {"new": len(new_edges), "gone": len(gone), "placed": len(placed)}
+
+
+def slug(name):
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", (name or "item").casefold())).strip("-")[:48] or "item"
+
+
 def main(argv):
     args = argv[1:]
-    if len(args) < 3 or args[0] not in ("check", "draw"):
+    if len(args) >= 2 and args[0] == "map":
+        return main_map(args[1], args[2:])
+    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards"):
         print(__doc__)
         return 2
     cmd, plan_path, src = args[0], args[1], args[2]
@@ -747,6 +1177,28 @@ def main(argv):
 
     def opt(flag, default=None):
         return rest[rest.index(flag) + 1] if flag in rest and rest.index(flag) + 1 < len(rest) else default
+
+    if cmd in ("built", "cards"):
+        path = sv.snapshot_file(src, "--start" in rest)
+        snap = city.load(path)
+        plans = load_plans(plan_path)
+        if not arr(snap.get("edges")):
+            print(f"{path.name} has no roads (cut for size, or an older snapshot), so nothing can be checked.")
+            return 1
+        if cmd == "built":
+            results = Built(snap).run(plans, every="--all" in rest)
+            print(built_markdown(results, path, snap))
+            if opt("--json"):
+                Path(opt("--json")).write_text(json.dumps({"snapshot": path.name, "taken": snap.get("taken"), "plans": results},
+                                                          ensure_ascii=False, indent=1), encoding="utf-8")
+            if opt("--out"):
+                try:
+                    draw_built(snap, plans, results, opt("--out"), width=min(max(int(opt("--width", 1600)), 600), 1600))
+                    print(f"\nwrote {opt('--out')}")
+                except ValueError:
+                    print(f"\n{path.name} has no terrain part, so there's no picture.")
+            return 0
+        return main_cards(snap, plans, rest, opt)
 
     path = sv.snapshot_file(src, "--start" in rest)
     snap = city.load(path)
@@ -775,6 +1227,84 @@ def main(argv):
         print(f"{path.name} has no terrain part (City Manager 0.6 or later writes it), so there's nothing to draw on.")
         return 1
     print(f"wrote {out}")
+    return 0
+
+
+def main_cards(snap, plans, rest, opt):
+    out_dir = opt("--out-dir")
+    if not out_dir:
+        print("cards needs --out-dir DIR (the journal source's images folder, say)")
+        return 2
+    only = [rest[i + 1] for i, a in enumerate(rest) if a == "--only" and i + 1 < len(rest)]
+    width = min(max(int(opt("--width", 900)), 600), 1600)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        facts = sv.survey(snap)
+    except ValueError:
+        print("The snapshot has no terrain part, so there's nothing to draw on.")
+        return 1
+    rows, seen = [], set()
+    for p in plans:
+        status = status_of(p.get("name"))
+        if (only and p.get("name") not in only) or (not only and status not in ("Now", "Next", None)):
+            continue
+        for kind in ("roads", "junctions", "areas"):
+            for it in arr(p.get(kind)):
+                if not isinstance(it, dict) or it.get("existing") or not step_number(it.get("name")) or not item_points(it):
+                    continue
+                name = it["name"]
+                if name.casefold() in seen:
+                    continue
+                seen.add(name.casefold())
+                file = f"card-{slug(name)}.png"
+                draw(snap, plans, out / file, around=name, width=width, facts=facts)
+                q = item_points(it)
+                x, z = centre_of(kind, q)
+                b = sv.bounds([[a, a, c, c] for a, c in q])
+                zoom = round(min(max(1.4 * max(b[1] - b[0], b[3] - b[2], 300.0), 400.0), 4000.0), -1)
+                rows.append((name, p.get("name"), file, x, z, zoom))
+    if not rows:
+        print("No numbered items in the Now and Next plans (or the plans named with --only), so no cards.")
+        return 1
+    print(f"# Build cards: {len(rows)} pictures in {out}\n")
+    print("For each item's journal step (the same number and words): `picture` and `where`, which City Manager 0.9 "
+          "shows as Picture and Show on map under the step. For an older mod, put the picture line in the project page.\n")
+    for name, plan_name, file, x, z, zoom in rows:
+        label = name.replace('"', "'")
+        print(f"- **{name}** ({plan_name})")
+        print(f"  - step: `picture = \"{file}\"` and `where = {{ label = \"{label}\", x = {round(x)}, z = {round(z)}, zoom = {int(zoom)} }}`")
+        print(f"  - picture line (older mods): `![{label}]({file})`")
+    return 0
+
+
+def main_map(src, rest):
+    def opt(flag, default=None):
+        return rest[rest.index(flag) + 1] if flag in rest and rest.index(flag) + 1 < len(rest) else default
+
+    out = opt("--out")
+    if not out:
+        print("map needs --out FILE.png")
+        return 2
+    now_path = sv.snapshot_file(src)
+    snap = city.load(now_path)
+    before = opt("--before")
+    then, label = None, ""
+    then_path = city.before_path(src, before, snap)
+    if then_path.exists() and then_path.resolve() != now_path.resolve():
+        then = city.load(then_path)
+        label = obj(obj(then.get("city")).get("date")).get("text") or city.local_time(then.get("taken"))
+        if (then.get("taken") or "") == (snap.get("taken") or ""):
+            then = None
+    try:
+        res = draw_city_map(snap, out, then, view=opt("--view", "city"), title=opt("--title"),
+                            width=min(max(int(opt("--width", 1600)), 600), 1600), since_label=label)
+    except ValueError:
+        print(f"{now_path.name} has no terrain part (City Manager 0.6 or later writes it), so there's nothing to draw on.")
+        return 1
+    n, b = res["new"], res["placed"]
+    print(f"wrote {out}" + (f": {n} new piece{'' if n == 1 else 's'} of road and track since {label}, "
+                            f"{b} building{'' if b == 1 else 's'} placed" if then is not None else " (nothing to compare with)"))
     return 0
 
 

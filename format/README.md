@@ -27,7 +27,8 @@ hand works too:
     "id": "roads", "title": "Roads", "scale": "city", "status": "active", "priority": 1,
     "summary": "The road network.", "where": { "label": "East exit", "x": 120, "z": -400, "zoom": 700 },
     "plans": [{ "kind": "draft", "name": "My City 3", "layers": ["Now · East exit"] }],
-    "steps": [{ "id": "exit", "text": "Roundabout at the east exit", "done": false, "changed": "" }],
+    "steps": [{ "id": "exit", "text": "Roundabout at the east exit", "done": false, "changed": "",
+                "picture": "card-exit.1a2b3c4d.png", "where": { "label": "East exit", "x": 120, "z": -400, "zoom": 600 } }],
     "log": [{ "date": "2026-11-24 18:00", "text": "Started." }],
     "body": "Markdown: headings, lists, tables, **bold**, > callouts, ![caption](picture.png)"
   }],
@@ -38,6 +39,8 @@ hand works too:
 - **Statuses:** `active`, `next`, `idea`, `hold`, `done`.
 - **Scales:** `city`, `district`, `street`, `building`, `system`.
 - **Ids:** keep them stable. The Mayor's ticks are stored against `p:<project>/<step>` and `b:<briefing>/<task>`.
+- **Steps:** `picture` (one of `images`, the step's build card) and `where` (a Show-on-map place) are optional; from mod
+  0.9 the panel shows them as Picture and Show on map buttons under the step, and an older mod ignores them.
 - **Plans:** `kind` is `draft` (a guide for the City Planning Draft planner: `name` is the guide's file, `layers` its
   plan rows), `doc` (`title`, `url`, shown as text) or `file`.
 - **Pictures:** PNG files in the journal's `images` folder, named with letters, digits, `.`, `_` and `-`, and listed in
@@ -153,11 +156,12 @@ want history. The plugin's `city.py` reads them.
 
 ### The city-wide parts
 
-Between `budget` and `counts`, in this order. Names in the game's language are as the Mayor sees them; ids are the
+Between `budget` and `counts`, in this order (`map` from mod 0.9; a snapshot from an older mod doesn't have it). Names in the game's language are as the Mayor sees them; ids are the
 game's own (enum or prefab names). Checked against the game's own panels on 24 Nov 2026 (game 1.6.2).
 
 | Part | What it holds |
 |---|---|
+| `map` | The map and the New Game choices: `name` (the map's name as the main menu showed it), `theme` (the theme prefab: `European`, `North American`…), `leftHandTraffic`, `mode` (the game mode's prefab name: `NormalMode`, or another mode's), `options` (`naturalDisasters`, `unlimitedMoney`, `unlockAll`, `unlockMapTiles`), and `links`: every link off the map, `kind` (`road`, `train`, `air`, `ship`, `power`, `water`) with its `x` and `z`, as the game's own map panel finds them |
 | `demand` | The demand bars, 0 to 100: `residentialLow`, `residentialMedium`, `residentialHigh`, `commercial`, `industrial`, `storage`, `office`; `factors`: what pushes each up or down (the game's `DemandFactor` names) |
 | `taxes` | Percent for `residential`, `commercial`, `industrial`, `office`; `residentialByEducation` (5 levels) |
 | `fees` | Per service (`Electricity`, `Water`, `Healthcare`, `BasicEducation`…): `fee`, and `percent` as the slider shows it (100 is the default) |
@@ -171,7 +175,7 @@ game's own (enum or prefab names). Checked against the game's own panels on 24 N
 | `utilities` | `electricity`: `production`, `consumption`, `fulfilled`, `batteryCharge`, `batteryCapacity`, `import`, `export`, in tenths of a kilowatt (the game shows 77,367 as 7.7 MW); `water`: `freshCapacity`, `freshConsumption`, `sewageCapacity`, `sewageConsumption`, in cubic metres. These are 0 until the simulation has run a moment after loading |
 | `problems` | The warning icons: `kinds` (`id`, `title`, `count`) and `items`: `kind` (its place in `kinds`), `x`, `z`, `level` (`Problem`, `Warning`, `MajorProblem`, `Error`, `FatalProblem`), `on` (`building`, `road`, `junction`, `vehicle`, `citizen`, `other`), and the building's `prefab` or the road's `street` |
 | `zoning` | Per zone type: `zone`, `title`, `cells` (8 m cells zoned), `built` (with a building) |
-| `catalogue` | Every road, track and prebuilt junction in the game's menus: `prefab`, `title`, `kind`, `menu`, `unlocked`, `milestone` (the one that unlocks it), `costPerKm` and `upkeepPerKm` (a month), `lanes` (when the city has one built); `milestone` at the top is the city's |
+| `catalogue` | Every road, track and prebuilt junction in the game's menus: `prefab`, `title`, `kind`, `menu`, `unlocked`, `milestone` (the one that unlocks it), `costPerKm` and `upkeepPerKm` (a month), `lanes` (when the city has one built); `milestone` at the top is the city's. Kinds: `road`, `highway`, `train`, `tram`, `subway`, `junction` (a prebuilt intersection), `roundabout` (the road menu's roundabouts, placed on a junction) and `junction control` (traffic lights, removing them, all-way stops). A Road Builder road has `mod`: `Road Builder`, and `menu` `Road Builder` when it's placed from Road Builder's own list |
 | `transit` | Each line: `kind`, `name`, `number`, `color`, `vehicles`, `passengers` (on board now), `usagePercent`, `length`, `active`, and its `stops` in order (`x`, `z`, `name`, `waiting`) |
 | `mapTiles` | `permitsLeft`, and every map tile: `owned`, `box` (`[minX, maxX, minZ, maxZ]`), `resources` (`Area`, `BuildableLand`, `FertileLand`, `Forest`, `Oil`, `Ore`, `SurfaceWater`, `GroundWater`, `Fish`, in the game's own units). No prices yet |
 | `grids` | `landValue`, `groundPollution`, `airPollution`, `noisePollution` on a `size` × `size` grid (64 × 64, 224 m cells), encoded like the terrain |

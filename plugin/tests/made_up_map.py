@@ -134,8 +134,17 @@ CATALOGUE = {"milestone": 3, "items": [
 ]}
 
 
-def snapshot(owned=OWNED, parts=True):
-    """The made-up city. parts=False leaves out what older snapshots lack (map tiles, grids, catalogue)."""
+MAP_PART = {"name": "Riverton Valley", "theme": "European", "leftHandTraffic": True, "mode": "NormalMode",
+            "options": {"naturalDisasters": False, "unlimitedMoney": False, "unlockAll": False, "unlockMapTiles": False},
+            "links": [{"kind": "road", "x": -895.0, "z": 300.0}, {"kind": "train", "x": 250.0, "z": -895.0},
+                      {"kind": "ship", "x": -560.0, "z": -895.0}, {"kind": "air", "x": 895.0, "z": 800.0},
+                      {"kind": "power", "x": 895.0, "z": -600.0}, {"kind": "power", "x": 890.0, "z": -610.0},
+                      {"kind": "water", "x": -895.0, "z": -300.0}]}
+
+
+def snapshot(owned=OWNED, parts=True, map_part=False):
+    """The made-up city. parts=False leaves out what older snapshots lack (map tiles, grids, catalogue); map_part=True
+    adds the map part mod 0.9 writes (left-hand traffic, a ship, an air, a power and a water link)."""
     nodes, edges = network()
     owned_tiles = [t for t in map_tiles(owned) if t["owned"]]
     snap = {
@@ -154,4 +163,6 @@ def snapshot(owned=OWNED, parts=True):
         snap["grids"] = {"size": 8, "cell": 224.0, "origin": ORIGIN, **{k: grid16([0] * 64) for k in
                          ("landValue", "groundPollution", "airPollution", "noisePollution")}}
         snap["catalogue"] = copy.deepcopy(CATALOGUE)
+    if map_part:
+        snap["map"] = copy.deepcopy(MAP_PART)
     return snap

@@ -600,7 +600,18 @@ namespace CityManager
                 foreach (var e in nets)
                 {
                     var placeable = _em.GetComponentData<PlaceableNetData>(e);
-                    if ((placeable.m_PlacementFlags & (Game.Net.PlacementFlags.IsUpgrade | Game.Net.PlacementFlags.UpgradeOnly)) != 0) continue;
+                    if ((placeable.m_PlacementFlags & (Game.Net.PlacementFlags.IsUpgrade | Game.Net.PlacementFlags.UpgradeOnly)) != 0)
+                    {
+                        // Upgrades are left out (trees, grass, lighting), but a junction's own pieces stay: the
+                        // roundabouts, and the traffic lights and stop signs, by the names the road menu shows.
+                        var set = placeable.m_SetUpgradeFlags.m_General;
+                        if ((set & CompositionFlags.General.Roundabout) != 0)
+                            items.Add(CatalogueItem(e, "roundabout", achieved));
+                        else if ((set & (CompositionFlags.General.TrafficLights | CompositionFlags.General.RemoveTrafficLights |
+                                         CompositionFlags.General.AllWayStop)) != 0)
+                            items.Add(CatalogueItem(e, "junction control", achieved));
+                        continue;
+                    }
                     var info = NetPrefabOf(e);
                     if (info.Kind == null || info.Kind == "path") continue;
                     var item = CatalogueItem(e, info.Kind, achieved);
@@ -622,6 +633,9 @@ namespace CityManager
             Snap.Section("catalogue", new JObject { ["milestone"] = achieved, ["items"] = items });
             return true;
         }
+
+        private static readonly System.Text.RegularExpressions.Regex RoadBuilderId = new System.Text.RegularExpressions.Regex(
+            "^[a-z][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(-[0-9]+)?$");
 
         private JObject CatalogueItem(Entity e, string kind, int achieved)
         {
@@ -646,7 +660,64 @@ namespace CityManager
                 var group = PrefabName(ui.m_Group);
                 o["menu"] = Loc($"SubServices.NAME[{group}]") ?? group;
             }
+            if (RoadBuilderId.IsMatch(name))
+            {
+                // A Road Builder road: its id is the maker's road id and account number, its title the road's own
+                // name; it's placed from Road Builder's own list unless the maker put it in a menu.
+                o["mod"] = "Road Builder";
+                if (o["menu"] == null) o["menu"] = "Road Builder";
+            }
             return o;
+        }
+
+        // --- the map: its name and theme, the traffic side, the game mode and New Game options, every link off it
+
+        private bool MapPart()
+        {
+            var config = Sys<CityConfigurationSystem>();
+            var meta = Sys<Game.UI.MapMetadataSystem>();
+            var o = new JObject();
+            var mapName = meta.mapName;   // set by the main menu on New Game (the map's name) and on Load (the save's)
+            if (!string.IsNullOrEmpty(mapName)) o["name"] = JournalStore.Clean(mapName, 200);
+            if (config.defaultTheme != Entity.Null) o["theme"] = PrefabName(config.defaultTheme);
+            o["leftHandTraffic"] = config.leftHandTraffic;
+            var mode = Sys<Game.Prefabs.Modes.GameModeSystem>().currentModeName;   // "NormalMode", or another mode's name
+            if (!string.IsNullOrEmpty(mode)) o["mode"] = mode;
+            o["options"] = new JObject
+            {
+                ["naturalDisasters"] = config.naturalDisasters,
+                ["unlimitedMoney"] = config.unlimitedMoney,
+                ["unlockAll"] = config.unlockAll,
+                ["unlockMapTiles"] = config.unlockMapTiles,
+            };
+            var links = new JArray();
+            using (var ents = _q.Outside.ToEntityArray(Allocator.Temp))
+            {
+                foreach (var e in ents)
+                {
+                    if (!TryGet<Game.Objects.Transform>(e, out var t)) continue;
+                    var kinds = new List<string>();
+                    if (_em.HasComponent<Game.Objects.ElectricityOutsideConnection>(e)) kinds.Add("power");
+                    if (_em.HasComponent<Game.Objects.WaterPipeOutsideConnection>(e)) kinds.Add("water");
+                    if (TryGet<PrefabRef>(e, out var pr) && TryGet<OutsideConnectionData>(pr.m_Prefab, out var oc))
+                    {
+                        if ((oc.m_Type & OutsideConnectionTransferType.Road) != 0) kinds.Add("road");
+                        if ((oc.m_Type & OutsideConnectionTransferType.Train) != 0) kinds.Add("train");
+                        if ((oc.m_Type & OutsideConnectionTransferType.Air) != 0) kinds.Add("air");
+                        if ((oc.m_Type & OutsideConnectionTransferType.Ship) != 0) kinds.Add("ship");
+                    }
+                    foreach (var kind in kinds)
+                        links.Add(new JObject
+                        {
+                            ["kind"] = kind,
+                            ["x"] = Math.Round(t.m_Position.x, 1),
+                            ["z"] = Math.Round(t.m_Position.z, 1),
+                        });
+                }
+            }
+            o["links"] = links;
+            Snap.Section("map", o);
+            return true;
         }
 
         // --- map tiles (owned or not) with their natural resources

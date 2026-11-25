@@ -39,6 +39,8 @@ import city  # noqa: E402  reads snapshots
 from city import arr, obj, name_of  # noqa: E402
 
 WATER_M = 0.5                     # a cell deeper than this is water
+HARBOUR_DEPTH_M = 4.0             # deep water at the shore worth naming as a harbour site (the game has the last word)
+HARBOUR_SPACING_M = 800.0         # harbour sites at least this far apart
 SLOPES = [(5.0, "flat"), (8.0, "gentle"), (15.0, "hilly"), (math.inf, "steep")]
 CLASS_WORDS = {"flat": "flat (up to 5%: anything)", "gentle": "gentle (5–8%: homes and streets)",
                "hilly": "hilly (8–15%: parks, low density)", "steep": "steep (over 15%: leave it, or tunnel)",
@@ -519,6 +521,30 @@ def survey(snap, start=False):
         if any(0 <= rr < n and 0 <= c2 < n and classes[rr * n + c2] == "water" for rr, c2 in ((r - 1, cc), (r + 1, cc), (r, cc - 1), (r, cc + 1))):
             shore += 1
 
+    # harbour sites: land at the shore with the deepest water within about two grid cells (a cargo harbour needs deep
+    # water at the quay; the game decides in the end when the Mayor places it)
+    hw_pts = [q for e in net.by_kind("highway") for q in e["line"]]
+    shore_sites = []
+    for i in range(n * n):
+        if classes[i] == "water":
+            continue
+        r, cc = divmod(i, n)
+        near = [terrain.w[rr * n + c2] for rr in range(r - 2, r + 3) for c2 in range(cc - 2, cc + 3)
+                if 0 <= rr < n and 0 <= c2 < n and classes[rr * n + c2] == "water"]
+        if near and max(near) >= HARBOUR_DEPTH_M:
+            shore_sites.append((max(near), i))
+    harbour_sites = []
+    for depth, i in sorted(shore_sites, reverse=True):
+        x, z = terrain.centre(*divmod(i, n))
+        if any(math.dist((x, z), tuple(h["centre"])) < HARBOUR_SPACING_M for h in harbour_sites):
+            continue
+        hwm = min((math.dist((x, z), q) for q in hw_pts), default=None)
+        harbour_sites.append({"centre": [round(x), round(z)], "where": places.of(x, z), "depth": round(depth, 1),
+                              "fromStart": distance_words(places.gap(x, z)),
+                              "highwayM": round(hwm) if hwm is not None else None})
+        if len(harbour_sites) >= 4:
+            break
+
     # connections off the map
     inc = net.incident()
     outside = []
@@ -544,7 +570,26 @@ def survey(snap, start=False):
             connections.append(row)
         row["places"].append([round(o["centre"][0]), round(o["centre"][1])])
         row["types"] = sorted(set(row["types"]) | {piece_name(t) for t in o["types"]})
+    # the links the mod's map part lists (mod 0.9): air, ship, power and water, which aren't network pieces, and a
+    # railway the network part didn't show
+    mp = obj(snap.get("map"))
+    node_kinds = {r["kind"] for r in connections}
+    for link in arr(mp.get("links")):
+        kind = obj(link).get("kind")
+        if kind not in LINK_WORDS or (kind == "train" and "train" in node_kinds):
+            continue
+        x, z = float(link.get("x") or 0), float(link.get("z") or 0)
+        edge = places.edge(x, z)
+        row = next((r for r in connections if r["kind"] == kind and r["edge"] == edge), None)
+        if row is None:
+            row = {"kind": kind, "edge": edge, "places": [], "fromStart": distance_words(places.gap(x, z)), "types": []}
+            connections.append(row)
+        if not any(math.dist((x, z), q) < 200 for q in row["places"]):
+            row["places"].append([round(x), round(z)])
     connections.sort(key=lambda r: (r["kind"] != "highway", r["kind"], r["edge"]))
+    settings = {k: mp[k] for k in ("name", "theme", "leftHandTraffic", "mode") if k in mp}
+    if isinstance(mp.get("options"), dict):
+        settings["options"] = {k: bool(v) for k, v in mp["options"].items()}
 
     # highways and railways
     def length_by(edges, key):
@@ -571,6 +616,13 @@ def survey(snap, start=False):
             at_grade.append(rec)
         elif len(through) == 1:
             highway_ends.append(rec)
+    stubs = []
+    for nid, es in inc.items():
+        node = net.nodes.get(nid, {})
+        if len(es) == 1 and es[0]["kind"] == "highway" and not node.get("outside"):
+            x, z = node.get("x", 0), node.get("z", 0)
+            stubs.append({"centre": [round(x), round(z)], "where": places.of(x, z), "highway": es[0]["streetName"] or "",
+                          "piece": piece_name(es[0]["title"]), "fromStart": distance_words(places.gap(x, z))})
 
     def in_start_len(edges):
         return sum((e.get("length", 0) or 0) for e in edges if places.inside(*e["line"][len(e["line"]) // 2]))
@@ -650,12 +702,13 @@ def survey(snap, start=False):
                   "heights": [round(min((terrain.h[i] for i in start_cells), default=0)), round(max((terrain.h[i] for i in start_cells), default=0))]},
         "tiles": {"owned": len(owned), "permitsLeft": tiles.permits, "resourcesKnown": tiles.has_resources, "buyable": buys},
         "flatSquare": square_flat, "gentleSquare": square_gentle,
-        "water": {"bodies": bodies},
+        "water": {"bodies": bodies, "harbourSites": harbour_sites},
         "connections": connections,
+        "settings": settings,
         "highways": {"km": km(sum(length_by(hw, lambda e: e["title"]).values())),
                      "types": {k: km(v) for k, v in length_by(hw, lambda e: piece_name(e["title"])).most_common()},
                      "names": sorted({e["streetName"] for e in hw if e["streetName"]}),
-                     "atGrade": at_grade, "ends": highway_ends,
+                     "atGrade": at_grade, "ends": highway_ends, "stubs": stubs,
                      "bridgesKm": km(sum(e.get("length", 0) or 0 for e in hw if e.get("bridge"))),
                      "tunnelsKm": km(sum(e.get("length", 0) or 0 for e in hw if e.get("tunnel")))},
         "rail": {"km": km(sum(e.get("length", 0) or 0 for e in rail)),
@@ -676,6 +729,10 @@ def pct(v):
 def ground_words(g):
     parts = [f"{CLASS_WORDS[k]} {pct(g.get(k, 0))}" for k in ("flat", "gentle", "hilly", "steep", "water") if g.get(k, 0)]
     return "; ".join(parts) if parts else "unknown"
+
+
+LINK_WORDS = {"train": "Railway", "air": "Air route", "ship": "Shipping lane", "power": "Power line", "water": "Water pipe"}
+LINK_COLOURS = {"air": (80, 80, 200), "ship": (20, 110, 190), "power": (225, 160, 0), "water": (40, 160, 200)}
 
 
 def founding_facts(src):
@@ -724,7 +781,22 @@ def report(s, pictures=()):
     w(f"| Milestone | {s.get('milestone', '?')} (what it unlocks: `city.py catalogue`) |")
     w(f"| Map tiles | {tl['owned']} owned" + (f" of {s['map']['tiles']}" if tl["resourcesKnown"] else " (this snapshot doesn't list the others)") +
       (f", {tl['permitsLeft']} permits left" if tl.get("permitsLeft") is not None else "") + " |")
-    w("| Traffic side | not in the snapshot: take it from the charter (`traffic`), or ask; it decides which side every ramp leaves |")
+    se = s.get("settings") or {}
+    if se.get("name") or se.get("theme"):
+        w(f"| Map | {se.get('name') or '?'}" + (f", {se['theme']} theme" if se.get("theme") else "") + " |")
+    if isinstance(se.get("leftHandTraffic"), bool):
+        side = "left" if se["leftHandTraffic"] else "right"
+        w(f"| Traffic side | drives on the {side}: slip roads leave and join on the {side} |")
+    else:
+        w("| Traffic side | not in the snapshot (City Manager 0.9 records it): take it from the charter (`traffic`), or ask; it decides which side every ramp leaves |")
+    if se.get("mode"):
+        w(f"| Game mode | {se['mode']} |")
+    opts = se.get("options") or {}
+    on = [words for key, words in (("unlockAll", "everything unlocked"), ("unlockMapTiles", "every map tile unlocked")) if opts.get(key)]
+    if "naturalDisasters" in opts:
+        on.append("natural disasters " + ("on" if opts["naturalDisasters"] else "off"))
+    if on:
+        w(f"| New Game options | {', '.join(on)} |")
     if st.get("note"):
         w(f"| Start | {st['note']} |")
     w("")
@@ -750,14 +822,15 @@ def report(s, pictures=()):
     w("")
 
     kinds_seen = {o["kind"] for o in s["connections"]}
-    from_file = [k for k in (fd.get("mapConnections") or []) if k in ("ship", "air") or (k == "train" and "train" not in kinds_seen)]
+    from_file = [] if (s.get("settings") or {}) else \
+        [k for k in (fd.get("mapConnections") or []) if k in ("ship", "air") or (k == "train" and "train" not in kinds_seen)]
     if s["connections"] or from_file:
         w("## Connections off the map\n")
     if s["connections"]:
         w(f"| What | Where it leaves the map | How many | From {st['word']} | Pieces |\n|---|---|---|---|---|")
         for o in s["connections"]:
-            what = {"highway": "Highway", "train": "Railway", "road": "Road"}.get(o["kind"], o["kind"].capitalize())
-            w(f"| {what} | {o['edge']} | {len(o['places'])} | {o['fromStart']} | {', '.join(o['types'])} |")
+            what = {"highway": "Highway", "road": "Road", **LINK_WORDS}.get(o["kind"], o["kind"].capitalize())
+            w(f"| {what} | {o['edge']} | {len(o['places'])} | {o['fromStart']} | {', '.join(o['types']) or '·'} |")
     if from_file:
         words = {"ship": "a **ship** link", "air": "an **air** link", "train": "a **railway** link"}
         w(("\n" if s["connections"] else "") + f"- **From the map's own file** ({fd['map']}): also "
@@ -774,6 +847,9 @@ def report(s, pictures=()):
           (f". Names: {', '.join(hw['names'][:10])}" + (f" and {len(hw['names']) - 10} more" if len(hw["names"]) > 10 else "") + "." if hw["names"] else "."))
     else:
         w("- **Highways:** none on the map.")
+    for e in hw.get("stubs", [])[:4]:
+        w(f"- **A highway stub:** {e['highway'] or 'a highway'} stops {e['where']}, joining nothing yet: the map's own "
+          "place for the city's first road off the highway.")
     for e in hw["ends"][:5]:
         w(f"- **Where a highway becomes a street:** {', '.join(e['highway']) or 'a highway'} ends on {', '.join(e['roads'])} {e['where']}. "
           "Fine for a start; plan the city's first interchange near it for when traffic grows.")
@@ -825,6 +901,11 @@ def report(s, pictures=()):
         w(f"- **Smaller water:** {small} more creeks and ponds (survey.json).")
     if not s["water"]["bodies"]:
         w("- **Water:** none deeper than half a metre on the 56 m grid.")
+    sites = s["water"].get("harbourSites") or []
+    if sites:
+        w("- **Deep water at the shore** (harbour sites; the game decides when the Mayor places one): " + "; ".join(
+            f"{h['depth']} m deep {h['where']}" + (f" (a highway {distance_words(h['highwayM'])} away)" if h.get("highwayM") is not None else "")
+            for h in sites) + ".")
     if s["resources"]:
         for k, r in s["resources"].items():
             best = "; best tiles " + ", ".join(b["where"] for b in r["best"]) if r["best"] else ""
@@ -1168,8 +1249,8 @@ def draw_survey(snap, s, path_map, path_start, width=1600):
 
     def connections_layer(pic):
         for o in s["connections"]:
-            colour = ROAD_STYLE.get(o["kind"], ((90, 90, 90), 3))[0]
-            word = {"highway": "Highway", "train": "Railway", "road": "Road"}.get(o["kind"], o["kind"])
+            colour = LINK_COLOURS.get(o["kind"]) or ROAD_STYLE.get(o["kind"], ((90, 90, 90), 3))[0]
+            word = {"highway": "Highway", "road": "Road", **LINK_WORDS}.get(o["kind"], o["kind"])
             for x, z in o["places"]:
                 pic.marker(x, z, "diamond", colour, r=14, outline=(255, 255, 255))
                 u, v = pic.px(x, z)

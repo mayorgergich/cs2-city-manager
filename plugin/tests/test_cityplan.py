@@ -61,6 +61,24 @@ class Exporter(unittest.TestCase):
             for item in items:
                 self.assertEqual(set(item), expected, f"{part}: {sorted(set(item) ^ expected)}")
 
+    def test_front_makes_a_guide_the_newest_for_import(self):
+        for n in ("Testville 1", "Testville 2"):
+            code, out = self.export("--name", n)
+            self.assertEqual(code, 0, out)
+        exports = self.planner / "Exports"
+        one, two = exports / "Testville 1.cityplan.json", exports / "Testville 2.cityplan.json"
+        os.utime(one, (1_700_000_000, 1_700_000_000))
+        before = one.read_bytes()
+        code, out = self.run_tool("front", "Testville 1")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Testville 1.cityplan.json is now the newest guide", out)
+        self.assertGreater(one.stat().st_mtime, two.stat().st_mtime)
+        self.assertEqual(one.read_bytes(), before, "the same guide, only newer")
+        self.assertFalse(any(p.suffix == ".tmp" for p in exports.iterdir()))
+        code, out = self.run_tool("front", "Testville 9")
+        self.assertNotEqual(code, 0)
+        self.assertIn("there are: Testville 1, Testville 2", out)
+
     def test_names_that_follow_the_convention_get_no_warning(self):
         code, out = self.export("--name", "Testville 2")
         self.assertEqual(code, 0, out)

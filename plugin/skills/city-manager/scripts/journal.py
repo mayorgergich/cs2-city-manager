@@ -17,7 +17,8 @@ A journal source is a folder of Markdown files, each starting with TOML front ma
   projects/*.md       id (default: the file name), title, scale (city district street building system), status (active
                       next idea hold done), force_status, priority (number, 1 first), summary (default: the first
                       paragraph), where {label, x, z, zoom}, [[plans]] kind (draft doc file), name, title, layers, url,
-                      note; [[steps]] id, text, done, note, force; [[log]] date, text
+                      note; [[steps]] id, text, done, note, force, picture (an images/ file: its build card's close-up),
+                      where {label, x, z, zoom} (its Show-on-map place); [[log]] date, text
   reports/*.md        id (a date), title, date, summary, [[numbers]] label, before, after, change; [[replies]] note
                       ("<note id>" from the Mayor's notes), text
   city.md             title, date, summary, [[facts]] label, value, note
@@ -270,6 +271,18 @@ def compile_journal(cfg, pages, problems, previous, stamps):
 
     pictures = {}  # source name -> where it's used
 
+    def place(w, where):
+        """A Show-on-map place, {label, x, z, zoom}, or None."""
+        if w is None:
+            return None
+        ok = isinstance(w, dict) and all(isinstance(w.get(k), (int, float)) and not isinstance(w.get(k), bool) for k in ("x", "z"))
+        if not ok:
+            problems.add(where, "where needs numbers x and z")
+            return None
+        zoom = w.get("zoom", 0)
+        zoom = float(zoom) if isinstance(zoom, (int, float)) and not isinstance(zoom, bool) else 0.0
+        return {"label": str(w.get("label", ""))[:200], "x": float(w["x"]), "z": float(w["z"]), "zoom": zoom}
+
     def use_pictures(where, body):
         for line in body.splitlines():
             for m in PIC.finditer(line):
@@ -301,7 +314,11 @@ def compile_journal(cfg, pages, problems, previous, stamps):
             if not s.get("text"):
                 problems.add(where, f"step {sid} has no text")
             done = f.flag(s, "done")
+            picture = f.text(s, "picture")
+            if picture:
+                pictures.setdefault(picture, f"{where} step {sid}")
             steps.append({"id": sid, "text": f.text(s, "text"), "done": done, "note": f.text(s, "note"),
+                          "picture": picture, "where": place(s.get("where"), f"{where} step {sid}"),
                           "changed": changed(f"p:{pid}/{sid}", done, f.flag(s, "force"), f"{where} step {sid}")})
         plans = []
         for pl in f.tables(meta, "plans"):
@@ -310,12 +327,7 @@ def compile_journal(cfg, pages, problems, previous, stamps):
                 problems.add(where, f"plan kind {kind!r} should be draft, doc or file")
             plans.append({"kind": kind, "name": f.text(pl, "name"), "title": f.text(pl, "title"), "layers": f.strings(pl, "layers"),
                           "url": f.text(pl, "url"), "note": f.text(pl, "note")})
-        w = meta.get("where")
-        if w is not None:
-            ok = isinstance(w, dict) and all(isinstance(w.get(k), (int, float)) and not isinstance(w.get(k), bool) for k in ("x", "z"))
-            if not ok:
-                problems.add(where, "where needs numbers x and z")
-            w = {"label": str(w.get("label", "")), "x": float(w["x"]), "z": float(w["z"]), "zoom": float(w.get("zoom", 0) or 0)} if ok else None
+        w = place(meta.get("where"), where)
         status_changed = changed(f"s:{pid}", status, f.flag(meta, "force_status"), f"{where} status")
         use_pictures(where, body)
         projects.append({
@@ -541,6 +553,10 @@ def cmd_build(src):
     for coll in (journal["projects"], journal["reports"], journal["briefings"], [journal["briefing"]], [journal["cityPage"]]):
         for item in filter(None, coll):
             item["body"] = PIC.sub(lambda m: f"![{m.group(1)}]({published[m.group(2)][0]})" if m.group(2) in published else m.group(0), item["body"])
+    for proj in journal["projects"]:
+        for st in proj["steps"]:
+            if st.get("picture"):
+                st["picture"] = published[st["picture"]][0] if st["picture"] in published else ""
     journal["images"] = {pub: size for pub, size, _ in published.values()}
     known = {f"{b['id']}/{t['id']}" for b in journal["briefings"] for t in b.get("tasks", [])}
     for t in (journal["briefing"] or {}).get("tasks", []):

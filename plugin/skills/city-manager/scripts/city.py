@@ -9,8 +9,17 @@ after the city loaded). The format is in the repo's format/README.md.
 usage:
   city.py summary <src>                 the city at a glance: when the snapshot was taken, people, money, the budget,
                                         roads, buildings, districts, tiles, and what changed this session
-  city.py changes <src> [--before FILE] what was built, changed or removed: since the session started (city-start.json),
-                                        or since an older snapshot you kept (--before, e.g. the copy from the last report)
+  city.py changes <src> [--before FILE|kept|start]
+                                        what was built, changed or removed: since the session started (city-start.json),
+                                        or since an older snapshot (--before kept: the copy the last report kept)
+  city.py numbers <src> [--before FILE|kept|start] [--toml]
+                                        the report's numbers, before and now: people, money, the budget, happiness,
+                                        jobs, roads, transit, warnings. Before is the session start (city-start.json),
+                                        `kept` the newest copy the last report kept, or a file; --toml prints them as
+                                        the report's [[numbers]] entries. Says when nothing new was saved
+  city.py keep <src> [--date YYYY-MM-DD] keeps a copy of the newest snapshot as <city>/manager/snapshots/<date>.json, so
+                                        the next report can compare with it (`--before kept`); <src> is the journal
+                                        source folder (<city>/journal)
   city.py streets <src>                 every street name with its road types, lanes and length
   city.py street <src> <name>           one street: its pieces, lanes, heights, tunnels and bridges, traffic flow
   city.py problems <src>                the warning icons by kind, and the streets they're near
@@ -28,6 +37,8 @@ Everything in a snapshot comes from the game and its mods (street and building n
 import json
 import math
 import os
+import re
+import shutil
 import sys
 import tomllib
 from collections import Counter, defaultdict
@@ -184,6 +195,15 @@ def cmd_summary(src):
           f"balance {signed(b.get('balance'), '$')} |")
     print(f"| Experience, milestone | {c.get('xp', 0):,}, {c.get('milestone', '?')} |")
     print(f"| Map tiles owned | {c.get('tiles', '?')} |")
+    mp = obj(snap.get("map"))
+    if mp:
+        bits = [x for x in (mp.get("name"), mp.get("theme") and f"{mp['theme']} theme",
+                            isinstance(mp.get("leftHandTraffic"), bool) and ("left-hand traffic" if mp["leftHandTraffic"] else "right-hand traffic"),
+                            mp.get("mode")) if x]
+        links = Counter(obj(l).get("kind") for l in arr(mp.get("links")))
+        print(f"| Map | {', '.join(bits)} |")
+        if links:
+            print(f"| Links off the map | {', '.join(f'{k} {v}' for k, v in sorted(links.items()))} |")
     lines = lambda d: ", ".join(f"{k} {money(v)}" for k, v in sorted(obj(d).items(), key=lambda kv: -abs(kv[1] or 0)) if v)
     if lines(b.get("income")):
         print(f"\nIncome: {lines(b.get('income'))}.")
@@ -363,8 +383,9 @@ def cmd_catalogue(src):
 
 def cmd_changes(src, before=None):
     now_path = snapshot_path(src)
-    then_path = Path(before).expanduser() if before else snapshot_path(src, start=True)
-    now, then = load(now_path), load(then_path)
+    now = load(now_path)
+    then_path = before_path(src, before, now)
+    then = load(then_path)
     print(f"# What changed in {obj(now.get('city')).get('name') or '?'}\n")
     print(f"From {then_path.name} ({local_time(then.get('taken'))}, in game {obj(obj(then.get('city')).get('date')).get('text') or '?'}) "
           f"to {now_path.name} ({local_time(now.get('taken'))}, in game {obj(obj(now.get('city')).get('date')).get('text') or '?'}).\n")
@@ -445,6 +466,154 @@ def cmd_changes(src, before=None):
     print(f"People {signed((c1.get('population') or 0) - (c0.get('population') or 0))}, "
           f"money {signed((c1.get('money') or 0) - (c0.get('money') or 0), '$')}, "
           f"map tiles {signed((c1.get('tiles') or 0) - (c0.get('tiles') or 0))}.")
+    return 0
+
+
+# --- the copies a report keeps, and the numbers it reports
+
+def kept_dir(src):
+    """<city>/manager/snapshots for a journal source folder (<city>/journal): where each report keeps the snapshot it
+    used, since the mod replaces city.json with every save. None for a journal folder or a file."""
+    src = Path(src).expanduser()
+    if src.is_file() or not (src / "journal.toml").exists():
+        return None
+    return src.parent / "manager" / "snapshots"
+
+
+def before_path(src, before, now):
+    """The snapshot to compare with: the session start (the default, or "start"), the newest kept copy taken before
+    `now` ("kept"), or a file."""
+    if before in (None, "start"):
+        f = Path(src).expanduser()
+        return f.with_name("city-start.json") if f.is_file() else snapshot_path(src, start=True)
+    if before in ("kept", "last"):
+        d = kept_dir(src)
+        files = sorted(d.glob("*.json"), reverse=True) if d and d.is_dir() else []
+        for f in files[:12]:
+            try:
+                taken = json.loads(f.read_text(encoding="utf-8")).get("taken") or ""
+            except (OSError, ValueError, AttributeError):
+                continue
+            if taken and taken < (now.get("taken") or ""):
+                return f
+        print(f"Note: no kept snapshot older than this one{f' in {d}' if d else ''}; comparing with the session start "
+              "instead. The report keeps one each time: city.py keep.\n")
+        return before_path(src, "start", now)
+    return Path(before).expanduser()
+
+
+def own_road_m(snap):
+    return sum(e.get("length", 0) or 0 for e in arr(snap.get("edges"))
+               if isinstance(e, dict) and not e.get("owned") and e.get("kind") in ROAD_KINDS)
+
+
+def number_rows(then, now):
+    """The report's numbers: label, before, after, change (all text, as the report's [[numbers]] takes them)."""
+    rows = []
+
+    def add(label, get, fmt, change=None, always=False):
+        try:
+            a, b = get(then), get(now)
+        except (TypeError, ValueError, KeyError):
+            return
+        if a is None and b is None:
+            return
+        if not always and not a and not b:
+            return
+        rows.append({"label": label, "before": fmt(a) if a is not None else "?", "after": fmt(b) if b is not None else "?",
+                     "change": change(b - a) if change and a is not None and b is not None else ""})
+
+    city_ = lambda s: obj(s.get("city"))
+    budget = lambda s: obj(s.get("budget"))
+    count = lambda v: f"{int(v):,}"
+    plus = lambda d: signed(d)
+    pct = lambda v: f"{float(v):.1f}%"
+    pts = lambda d: f"{d:+.1f} points" if abs(d) >= 0.05 else "±0"
+    unlimited = bool(city_(now).get("unlimitedMoney"))
+
+    add("People", lambda s: city_(s).get("population"), count, plus, always=True)
+    if unlimited:
+        rows.append({"label": "Money", "before": "unlimited", "after": "unlimited", "change": ""})
+    else:
+        add("Money", lambda s: city_(s).get("money"), money, lambda d: signed(d, "$"), always=True)
+    has_budget = lambda s: budget(s) and (budget(s).get("totalIncome") or budget(s).get("totalExpenses"))
+    add("Balance a month", lambda s: budget(s).get("balance") if has_budget(s) else None, money, lambda d: signed(d, "$"))
+    add("Income a month", lambda s: budget(s).get("totalIncome") if has_budget(s) else None, money, lambda d: signed(d, "$"))
+    add("Expenses a month", lambda s: budget(s).get("totalExpenses") if has_budget(s) else None, money, lambda d: signed(d, "$"))
+    add("Happiness", lambda s: obj(s.get("happiness")).get("average", city_(s).get("happiness")), count, plus)
+    add("Unemployment", lambda s: obj(s.get("people")).get("unemploymentPercent"), pct, pts)
+    add("Free jobs", lambda s: obj(s.get("jobs")).get("free"), count, plus)
+    add("Homeless", lambda s: obj(s.get("people")).get("homeless") if s.get("people") else None, count, plus)
+    add("Roads and highways", lambda s: own_road_m(s) if arr(s.get("edges")) else None, km,
+        lambda d: "±0" if abs(d) < 1 else ("+" if d > 0 else "−") + km(abs(d)))
+    add("Transit lines", lambda s: len(arr(s.get("transit"))) if "transit" in s else None, count, plus)
+    add("Warning icons", lambda s: sum(k.get("count", 0) or 0 for k in arr(obj(s.get("problems")).get("kinds")))
+        if "problems" in s else None, count, plus)
+    add("Map tiles", lambda s: city_(s).get("tiles"), count, plus)
+    add("Milestone", lambda s: city_(s).get("milestone"), count, plus)
+    return rows
+
+
+def cmd_numbers(src, before=None, as_toml=False):
+    now_path = snapshot_path(src)
+    now = load(now_path)
+    then_path = before_path(src, before, now)
+    then = load(then_path)
+    rows = number_rows(then, now)
+    same = (then.get("taken") or "") == (now.get("taken") or "") or then_path.resolve() == now_path.resolve()
+    stalled = not same and obj(obj(now.get("city")).get("date")).get("text") == obj(obj(then.get("city")).get("date")).get("text")
+    if as_toml:
+        if same:
+            print("# Nothing new was saved since the snapshot before: no numbers measured.")
+        for r in rows:
+            print("[[numbers]]")
+            print(f"label = {json.dumps(r['label'], ensure_ascii=False)}")
+            print(f"before = {json.dumps(r['after'] if same else r['before'], ensure_ascii=False)}")
+            print(f"after = {json.dumps('no save yet' if same else r['after'], ensure_ascii=False)}")
+            print(f"change = {json.dumps('' if same else r['change'], ensure_ascii=False)}\n")
+        return 0
+    c0, c1 = obj(then.get("city")), obj(now.get("city"))
+    print(f"# {c1.get('name') or '?'}: the numbers\n")
+    print(f"Before: {then_path.name}, taken {local_time(then.get('taken'))} (in game {obj(c0.get('date')).get('text') or '?'}). "
+          f"Now: {now_path.name}, taken {local_time(now.get('taken'))} (in game {obj(c1.get('date')).get('text') or '?'}).\n")
+    if same:
+        print("**Nothing new:** the newest snapshot is the one from before. The Mayor hasn't saved since, so there's "
+              "nothing to measure: report from the journal and mark the numbers \"no save yet\".\n")
+    elif stalled:
+        print("Note: the in-game date hasn't moved between the two, so the city didn't run (it was paused, or only "
+              "loaded and saved).\n")
+    if now.get("why") == "start":
+        print("Note: the newest snapshot was taken as the city loaded, before any play. If the Mayor played, the game "
+              "didn't save afterwards.\n")
+    print("| | Before | Now | Change |\n|---|---|---|---|")
+    for r in rows:
+        print(f"| {r['label']} | {r['before']} | {r['after']} | {r['change']} |")
+    return 0
+
+
+def cmd_keep(src, date=None):
+    d = kept_dir(src)
+    if d is None:
+        sys.exit("keep needs the city's journal source folder (<city>/journal, with its journal.toml), so the copy goes "
+                 "into <city>/manager/snapshots.")
+    now_path = snapshot_path(src)
+    snap = load(now_path)
+    if date is None:
+        date = local_time(snap.get("taken"))[:10]
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(-\d+)?", date or ""):
+        sys.exit(f"--date takes a date like 2026-11-24, not {date!r}.")
+    d.mkdir(parents=True, exist_ok=True)
+    data = now_path.read_bytes()
+    target, n = d / f"{date}.json", 2
+    while target.exists():
+        if target.read_bytes() == data:
+            print(f"Already kept: {target}")
+            return 0
+        target, n = d / f"{date}-{n}.json", n + 1
+    shutil.copyfile(now_path, target)
+    print(f"Kept {now_path.name} (taken {local_time(snap.get('taken'))}, in game "
+          f"{obj(obj(snap.get('city')).get('date')).get('text') or '?'}) as {target}. The next report compares with it: "
+          "--before kept.")
     return 0
 
 
@@ -572,9 +741,13 @@ def main(argv):
     args = argv[1:]
     if len(args) >= 2 and args[0] == "summary":
         return cmd_summary(args[1])
+    before = args[args.index("--before") + 1] if "--before" in args and args.index("--before") + 1 < len(args) else None
     if len(args) >= 2 and args[0] == "changes":
-        before = args[args.index("--before") + 1] if "--before" in args and args.index("--before") + 1 < len(args) else None
         return cmd_changes(args[1], before)
+    if len(args) >= 2 and args[0] == "numbers":
+        return cmd_numbers(args[1], before, "--toml" in args)
+    if len(args) >= 2 and args[0] == "keep":
+        return cmd_keep(args[1], args[args.index("--date") + 1] if "--date" in args and args.index("--date") + 1 < len(args) else None)
     if len(args) == 2 and args[0] == "streets":
         return cmd_streets(args[1])
     if len(args) >= 3 and args[0] == "street":

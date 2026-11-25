@@ -33,7 +33,9 @@ feel like filling in a form. So:
 - **Reports are for you, conclusions are for the Mayor.** Setup checks and long tables stay behind the counter; show
   what helps them decide (the map pictures, a short shortlist).
 - **Your own work stays behind the counter too.** Never post a working note to the Mayor ("start the charter right
-  away", "both files need a read first"): every line they see is the City Manager talking to them.
+  away", "both files need a read first"): every line they see is the City Manager talking to them. While a long job
+  runs (the survey, the plan), a line in character per stage at most ("The surveyors are pacing out the estuary."),
+  never tool or file talk.
 
 ## Ground rules
 
@@ -67,10 +69,13 @@ The parts question, then a line that sets the agenda ("The full treatment, then:
 
 ## 2. What the game already knows (a city that exists)
 
-The snapshot gives the money setting and the milestone; `city.py stage` gave the counts. Until the snapshot also
-records them, one short round asks only what a road plan needs and the snapshot lacks: **the map** (for its links off
-the map and its author's intended starts: `founding.py map "<name>"`) and **the traffic side** (every ramp depends on
-it). Skip this round without `backbone`. Record `map`, `map_kind`, `traffic`.
+The snapshot gives the money setting and the milestone; `city.py stage` gave the counts. A snapshot from City
+Manager 0.9 or later also names **the map**, its theme, **the traffic side**, the game mode and the New Game options,
+and every link off the map (ship, air, power, water as well as roads and rails): `city.py summary` shows them, the
+survey uses them. Then record `map`, `traffic` (and `map_kind` from `founding.py map "<name>"`, with the author's
+intended starts) without asking, and say them in one line ("Riverton Valley, European, right-hand traffic").
+An older snapshot lacks them: one short round asks only what a road plan needs, **the map** and **the traffic side**
+(every ramp depends on it). Skip this round without `backbone`.
 
 ## 3. The city's character (`identity`, `economy`, `transit`)
 

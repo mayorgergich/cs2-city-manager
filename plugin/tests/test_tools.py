@@ -123,6 +123,26 @@ class JournalBuild(unittest.TestCase):
         aliases = json.loads((self.e.root / "cities.json").read_text(encoding="utf-8"))["aliases"]
         self.assertEqual(aliases, {"Testville": "testcity", "Old Name": "testcity"})
 
+    def test_a_steps_build_card_picture_and_place(self):
+        png(self.e.src / "images/card-2-cedar.png", w=90, h=106)
+        self.e.write("projects/cards.md", '+++\nid = "cards"\ntitle = "Cards"\n\n[[steps]]\nid = "ramp"\ntext = "2 Cedar: ramp down"\n'
+                     'picture = "card-2-cedar.png"\nwhere = { label = "2 Cedar", x = 120, z = -340, zoom = 600 }\n\n'
+                     '[[steps]]\nid = "plain"\ntext = "No card"\n+++\n')
+        code, out = self.e.jp("build", self.e.src)
+        self.assertEqual(code, 0, out)
+        j = self.e.journal()
+        ramp, plain = next(p for p in j["projects"] if p["id"] == "cards")["steps"]
+        self.assertRegex(ramp["picture"], r"^card-2-cedar\.[0-9a-f]{8}\.png$")
+        self.assertEqual(j["images"][ramp["picture"]], [90, 106])
+        self.assertEqual(ramp["where"], {"label": "2 Cedar", "x": 120.0, "z": -340.0, "zoom": 600.0})
+        self.assertEqual((plain["picture"], plain["where"]), ("", None))
+        self.e.write("projects/cards.md", '+++\nid = "cards"\ntitle = "Cards"\n\n[[steps]]\nid = "ramp"\ntext = "x"\n'
+                     'picture = "nope.png"\nwhere = { x = "far" }\n+++\n')
+        code, out = self.e.jp("build", self.e.src)
+        self.assertEqual(code, 1)
+        self.assertIn("projects/cards.md step ramp: picture nope.png is not in images/", out)
+        self.assertIn("projects/cards.md step ramp: where needs numbers x and z", out)
+
     def test_a_second_build_without_changes_leaves_the_file_alone(self):
         self.e.jp("build", self.e.src)
         before = (self.e.root / "testcity/journal.json").stat().st_mtime_ns

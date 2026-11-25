@@ -14,7 +14,48 @@
 const React = window.React;
 const api = window["cs2/api"];
 const ui = window["cs2/ui"];
-const h = React.createElement;
+
+// The player's text scale (Options, Interface). The game sets --fontScale on the page's root element and sizes its own
+// text by it (index.css: --fontSizeS is calc(16rem * var(--fontScale)), and so on). A literal font size ignores it, so
+// every style passes through textScaled() on its way into an element: its rem font size and line height, and the height
+// of a one-line control (a button, a text box), are multiplied by the scale. The scale is read the way the game's own
+// code reads it, and a scale of 1 changes nothing.
+let textK = 1;
+const fontScale = () => {
+    try {
+        const v = Number.parseFloat(String(document.documentElement.style.getPropertyValue("--fontScale") || "1").trim());
+        return v >= 0.5 && v <= 3 ? v : 1;
+    } catch (e) {
+        return 1;
+    }
+};
+const remOf = (v) => {
+    const m = /^(-?[0-9]+(?:\.[0-9]+)?)rem$/.exec(String(v));
+    return m ? Number.parseFloat(m[1]) : null;
+};
+const scaledStyles = new WeakMap();
+function textScaled(style, k = textK) {
+    if (k === 1 || !style || typeof style !== "object") return style;
+    const hit = scaledStyles.get(style);
+    if (hit && hit.k === k) return hit.style;
+    let out = null;
+    const put = (key, n) => {
+        out = out || { ...style };
+        out[key] = Math.round(n * k * 100) / 100 + "rem";
+    };
+    const fs = remOf(style.fontSize), lh = remOf(style.lineHeight), ht = remOf(style.height), wd = remOf(style.width);
+    if (fs !== null) put("fontSize", fs);
+    if (lh !== null) put("lineHeight", lh);
+    if (ht !== null && (ht === lh || (fs !== null && lh === null))) {
+        put("height", ht);
+        if (wd !== null && wd === ht) put("width", wd);   // a square box stays square
+    }
+    const res = out || style;
+    scaledStyles.set(style, { k, style: res });
+    return res;
+}
+const h = (type, props, ...children) =>
+    React.createElement(type, props && props.style && textK !== 1 ? { ...props, style: textScaled(props.style) } : props, ...children);
 const G = "cityManager";
 const trigger = (name, ...args) => api.trigger(G, name, ...args);
 
@@ -122,6 +163,8 @@ const C = {
     arrow: { width: "30rem", padding: "5rem 0", textAlign: "center", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: "4rem" },
     pickName: { flex: 1, textAlign: "center", padding: "5rem 4rem" },
     caption: { ...SMALL, marginTop: "2rem" },
+    stepTools: { display: "flex", flexDirection: "row", marginLeft: "26rem", marginTop: "2rem", marginBottom: "4rem" },
+    miniButton: { ...BUTTON, padding: "2rem 8rem", fontSize: "13rem", lineHeight: "18rem" },
     viewer: { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.82)", pointerEvents: "auto",
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" },
 };
@@ -652,7 +695,9 @@ function ProjectDetail(props) {
         steps.map((s) => {
             const key = stepKey(p.id, s.id);
             const isDone = stepDone(mayor, key, s);
-            return h(Check, { key, done: isDone, text: inline(b, s.text), sub: take(b, s.note), onToggle: () => trigger("tick", key, !isDone) });
+            const check = h(Check, { key, done: isDone, text: inline(b, s.text), sub: take(b, s.note), onToggle: () => trigger("tick", key, !isDone) });
+            const tools = StepTools({ b, ctx, step: s });
+            return tools ? h("div", { key }, check, tools) : check;
         }),
         p.body ? h(Markdown, { text: p.body, ctx, b }) : null,
         section("nt", "Notes"),
@@ -661,6 +706,21 @@ function ProjectDetail(props) {
         objs(p.log).slice().reverse().map((n, i) => h("div", { key: "l" + i, style: C.note },
             h("div", { style: C.small }, "City Manager · " + when(take(b, n.date, 40))), h("div", { style: { marginTop: "2rem" } }, inline(b, n.text)))),
         more(b));
+}
+
+// A step's build card: Show on map flies the camera to its place, Picture opens its close-up in the viewer (the picture
+// isn't drawn on the page, so it costs the page's picture budget nothing until it's opened).
+function StepTools(props) {
+    const { b, ctx, step } = props;
+    const where = obj(step.where);
+    const pic = str(step.picture);
+    const size = PICTURE_NAME.test(pic) ? own(ctx.sizes, pic) : undefined;
+    const hasPic = Array.isArray(size) && size[0] > 0 && size[1] > 0;
+    const placed = where && Number.isFinite(Number(where.x)) && Number.isFinite(Number(where.z));
+    if (!placed && !hasPic) return null;
+    return h("div", { style: C.stepTools },
+        placed ? h("div", { style: C.miniButton, onClick: () => trigger("flyTo", Number(where.x), Number(where.z), Number(where.zoom) || 0) }, "Show on map") : null,
+        hasPic ? h("div", { style: C.miniButton, onClick: () => ctx.zoom({ src: ctx.base + pic, size, caption: take(b, step.text, 200) }) }, "Picture") : null);
 }
 
 function ReportsTab(props) {
@@ -856,6 +916,7 @@ function ResizeHandles(props) {
 // The panel stays mounted while closed (it keeps its tab and open project) and draws nothing then; the tab's contents
 // unmount, so the Wrap-up tab saves unsaved answers when the panel closes.
 function Panel() {
+    textK = fontScale();   // read on every draw: the player may have changed it in Options since
     const open = api.useValue(open$);
     const journalStr = api.useValue(journal$), mayorStr = api.useValue(mayor$), infoStr = api.useValue(info$);
     const j = React.useMemo(() => obj(parse(journalStr, null)), [journalStr]);
@@ -961,5 +1022,5 @@ const hasCSS = false;
 // For the offline tests (tests/ui.test.mjs); the game only uses the default export.
 const __test = { markup, take, budget, Markdown, Table, Picture, stepDone, projectStatus, newer, parse, arr, objs, own, when, wrapUpId, tabPage,
     TodayTab, ProjectList, ProjectDetail, NotesTab, WrapUpTab, CityTab, SnapshotRow, SessionSummary, sessionLines, digits, ReportsTab,
-    WIN, fitLayout, dragged, panelStyle, screenKey, ResizeHandles, Panel, LIMIT, PICTURE_NAME, Guard, Chooser };
+    WIN, fitLayout, dragged, panelStyle, screenKey, ResizeHandles, Panel, LIMIT, PICTURE_NAME, Guard, Chooser, textScaled, fontScale, StepTools };
 export { hasCSS, __test, register as default };

@@ -197,6 +197,15 @@ class CityReader(unittest.TestCase):
         self.assertIn("## Milestone 6 unlocks\n\n- Six-Lane Road (Large Roads)", out)
         self.assertNotIn("Subway Track", out)                     # neither unlocked nor next
 
+    def test_the_map_part_in_the_summary(self):
+        a = with_city_parts(after())
+        a["map"] = {"name": "Riverton Valley", "theme": "North American", "leftHandTraffic": False, "mode": "NormalMode",
+                    "options": {}, "links": [{"kind": "road", "x": 0, "z": 0}, {"kind": "ship", "x": 1, "z": 1}, {"kind": "road", "x": 5, "z": 5}]}
+        (self.dir / "city.json").write_text(json.dumps(a), encoding="utf-8")
+        code, out = run("summary", self.dir / "city.json")
+        self.assertIn("| Map | Riverton Valley, North American theme, right-hand traffic, NormalMode |", out)
+        self.assertIn("| Links off the map | road 2, ship 1 |", out)
+
     def test_older_snapshots_without_the_parts(self):
         code, out = run("catalogue", self.dir)
         self.assertEqual(code, 1)
@@ -233,6 +242,88 @@ class CityReader(unittest.TestCase):
         self.assertEqual(city.snapshot_path(src), city.ROOT / "riverton" / "city.json")
         self.assertEqual(city.snapshot_path(src, start=True), city.ROOT / "riverton" / "city-start.json")
 
+
+class Numbers(unittest.TestCase):
+    """city.py numbers and keep: the report's [[numbers]] and the copy each report keeps."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.dir, True))
+        (self.dir / "city-start.json").write_text(json.dumps(BEFORE), encoding="utf-8")
+        (self.dir / "city.json").write_text(json.dumps(with_city_parts(after())), encoding="utf-8")
+
+    def test_the_table_before_and_now(self):
+        code, out = run("numbers", self.dir)
+        self.assertEqual(code, 0, out)
+        self.assertIn("| People | 1,000 | 1,312 | +312 |", out)
+        self.assertIn("| Money | $50,000 | $8,000 | −$42,000 |", out)
+        self.assertIn("| Roads and highways | 500 m | 600 m | +100 m |", out)   # a building's own piece left out
+        self.assertIn("| Unemployment | ? | 46.6% |  |", out)                    # the older snapshot has no people part
+        self.assertIn("| Map tiles | 9 | 10 | +1 |", out)
+        self.assertNotIn("Nothing new", out)
+
+    def test_toml_for_the_report(self):
+        import tomllib
+        code, out = run("numbers", self.dir, "--toml")
+        self.assertEqual(code, 0, out)
+        rows = {r["label"]: r for r in tomllib.loads(out)["numbers"]}
+        self.assertEqual(rows["People"], {"label": "People", "before": "1,000", "after": "1,312", "change": "+312"})
+        self.assertEqual(rows["Warning icons"]["after"], "4")
+
+    def test_nothing_new_saved(self):
+        import tomllib
+        (self.dir / "city-start.json").write_text((self.dir / "city.json").read_text(encoding="utf-8"), encoding="utf-8")
+        code, out = run("numbers", self.dir)
+        self.assertIn("**Nothing new:**", out)
+        code, out = run("numbers", self.dir, "--toml")
+        rows = {r["label"]: r for r in tomllib.loads(out)["numbers"]}
+        self.assertEqual(rows["People"]["after"], "no save yet")
+        self.assertEqual(rows["People"]["before"], "1,312")
+
+    def test_a_city_that_didnt_run(self):
+        now = after()
+        now["city"]["date"] = BEFORE["city"]["date"]
+        (self.dir / "city.json").write_text(json.dumps(now), encoding="utf-8")
+        code, out = run("numbers", self.dir)
+        self.assertIn("the city didn't run", out)
+
+    def test_keep_then_compare_with_the_kept_copy(self):
+        journals = self.dir / "journals"
+        (journals / "riverton").mkdir(parents=True)
+        src = self.dir / "riverton" / "journal"
+        src.mkdir(parents=True)
+        (src / "journal.toml").write_text('id = "riverton"\ncity = "Riverton"\n', encoding="utf-8")
+        old_root = city.ROOT
+        city.ROOT = journals
+        self.addCleanup(lambda: setattr(city, "ROOT", old_root))
+        (journals / "riverton" / "city-start.json").write_text(json.dumps(BEFORE), encoding="utf-8")
+        (journals / "riverton" / "city.json").write_text(json.dumps(after()), encoding="utf-8")
+
+        code, out = run("numbers", src, "--before", "kept")
+        self.assertIn("no kept snapshot older than this one", out)
+        self.assertIn("| People | 1,000 | 1,312 |", out)
+
+        code, out = run("keep", src, "--date", "2026-11-24")
+        self.assertEqual(code, 0, out)
+        kept = self.dir / "riverton" / "manager" / "snapshots" / "2026-11-24.json"
+        self.assertTrue(kept.exists())
+        code, out = run("keep", src, "--date", "2026-11-24")
+        self.assertIn("Already kept", out)
+
+        later = after()
+        later.update(taken="2026-11-25T21:00:00Z")
+        later["city"].update(population=2000, date={"text": "April 2026, 08:00"})
+        (journals / "riverton" / "city.json").write_text(json.dumps(later), encoding="utf-8")
+        code, out = run("numbers", src, "--before", "kept")
+        self.assertIn("Before: 2026-11-24.json", out)
+        self.assertIn("| People | 1,312 | 2,000 | +688 |", out)
+        code, out = run("keep", src, "--date", "2026-11-24")
+        self.assertTrue((kept.parent / "2026-11-24-2.json").exists(), out)
+
+        with self.assertRaises(SystemExit):
+            run("keep", self.dir / "city.json")
+        with self.assertRaises(SystemExit):
+            run("keep", src, "--date", "tomorrow")
 
 class Stage(unittest.TestCase):
     """city.py stage: whether the intake founds the city or takes it over."""

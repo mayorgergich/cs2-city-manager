@@ -50,7 +50,7 @@ namespace CityManager
         public sealed class Queries
         {
             public EntityQuery Edges, Buildings, Districts, Tiles, Icons, Services, HappinessParams, FeeParams,
-                Lines, ZonePrefabs, Blocks, Placeable, Stamps, AllTiles;
+                Lines, ZonePrefabs, Blocks, Placeable, Stamps, AllTiles, Outside;
 
             public static Queries Make(Func<EntityQueryDesc, EntityQuery> make)
             {
@@ -113,6 +113,15 @@ namespace CityManager
                         All = new[] { ComponentType.ReadOnly<MapTile>(), ComponentType.ReadOnly<Game.Areas.Geometry>() },
                         None = none,
                     }),
+                    // Every link off the map, as the game's own map panel finds them (Game.UI.MapMetadataSystem): road,
+                    // rail, air and ship connections, power lines and water pipes.
+                    Outside = make(new EntityQueryDesc
+                    {
+                        Any = new[] { ComponentType.ReadOnly<Game.Objects.OutsideConnection>(),
+                            ComponentType.ReadOnly<Game.Objects.ElectricityOutsideConnection>(),
+                            ComponentType.ReadOnly<Game.Objects.WaterPipeOutsideConnection>() },
+                        None = none,
+                    }),
                 };
             }
         }
@@ -172,7 +181,7 @@ namespace CityManager
             _water = world.GetOrCreateSystemManaged<WaterSystem>();
             _world = world;
             // Each step reads one part; a step that returns false runs again next frame (big lists go in slices).
-            Steps(("city", City), ("economy", Economy), ("people", People), ("problems", Problems), ("networks", Networks),
+            Steps(("city", City), ("map", MapPart), ("economy", Economy), ("people", People), ("problems", Problems), ("networks", Networks),
                   ("zoning", Zoning), ("catalogue", Catalogue), ("transit", Transit), ("map tiles", MapTiles), ("grids", Grids),
                   ("buildings", Buildings), ("terrain", TerrainSlice));
         }

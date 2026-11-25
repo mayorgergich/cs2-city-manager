@@ -52,6 +52,8 @@ text = "What to do, in game words"
 done = false
 note = "optional small print"
 force = false                      # true for one build: the manager's done value overrules the Mayor's tick
+picture = "card-2-cedar-ramp-down.png"   # optional: the build card's close-up (an images/ file), opened from a Picture button
+where = { label = "2 Cedar", x = 120, z = -340, zoom = 600 }   # optional: Show on map for this step (mod 0.9)
 
 [[log]]
 date = "2026-11-23 23:30"

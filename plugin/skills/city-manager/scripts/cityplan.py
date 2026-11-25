@@ -16,6 +16,10 @@ nooolan; written against its version 1.2.2, schema 1.0). That mod is the build o
       format, so the build stage can use the approved geometry.
   mapid
       Prints the map_id of the most recently saved planner document.
+  front "<City> <N>" [--out-dir DIR]
+      Makes that guide the newest file in Exports, so the planner's Import picks it: Import loads the newest file,
+      whichever city it's for. Run it before each session of a city with a guide, when another city's guide may be
+      newer. It writes the same file afresh (same name, same content).
 
 The mod's map_id is the city name from the game's bottom toolbar, set when the planner UI first opens in that
 city. Import refuses a file whose map_id differs (case-insensitive), so have the user open the planner once in the
@@ -227,6 +231,30 @@ def cmd_export(args):
     print("In game: open the City Planning Draft panel and press Import (it loads the newest file in Exports).")
 
 
+def cmd_front(args):
+    name = args.pop(0)
+    out_dir = None
+    while args:
+        a = args.pop(0)
+        if a == "--out-dir": out_dir = args.pop(0)
+    out_dir = out_dir or os.path.join(ROOT, "Exports")
+    path = os.path.join(out_dir, name if name.endswith(".cityplan.json") else name + ".cityplan.json")
+    if not os.path.isfile(path):
+        have = sorted(f[:-len(".cityplan.json")] for f in os.listdir(out_dir) if f.endswith(".cityplan.json")) if os.path.isdir(out_dir) else []
+        sys.exit(f"no guide {os.path.basename(path)!r} in {out_dir}" + (f"; there are: {', '.join(have)}" if have else ""))
+    with open(path, "rb") as f:
+        data = f.read()
+    json.loads(data.decode("utf-8-sig"))      # a guide, not something else
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)                     # a fresh file: newest by every clock a file has
+    others = [f for f in os.listdir(out_dir) if f.endswith(".cityplan.json") and os.path.join(out_dir, f) != path]
+    newer = [f for f in others if os.path.getmtime(os.path.join(out_dir, f)) > os.path.getmtime(path)]
+    print(f"{os.path.basename(path)} is now the newest guide in {out_dir}" + (f" (still newer: {', '.join(newer)})" if newer else "") +
+          ". In game: open City Planning Draft and press Import latest file.")
+
+
 def cmd_read(args):
     city = args.pop(0); plan_sel = out = None
     while args:
@@ -262,6 +290,7 @@ if __name__ == "__main__":
     rest = sys.argv[2:]
     if cmd == "export": cmd_export(rest)
     elif cmd == "read": cmd_read(rest)
+    elif cmd == "front" and rest: cmd_front(rest)
     elif cmd == "mapid":
         found = newest_map_id(); print(found if found else "none")
     else:
