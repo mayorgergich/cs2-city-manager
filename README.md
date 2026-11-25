@@ -2,171 +2,139 @@
 
 # City Manager for Cities: Skylines II
 
-**Build your city, with a City Manager keeping you on track.**
+**You build the city. Your City Manager keeps the plans.**
 
-## Why
+## Why I made this
 
-In an ideal world I'd have hours to play CS2, but honestly, I'm busy. Sometimes I step away from the game for a while,
-only to come back to a city full of half-finished projects and no clear path forward.
+My biggest problem with CS2 was never the building. It was the planning. As my city grew, so did the list of things I
+meant to get to, and I'd end up leaving projects half-done, giving up on the city and starting a new one, only for the
+same thing to happen all over again.
 
-I tried some of the AI tools and MCP bridges out there, but most of them either need a live connection to the game
-while Claude runs, or push to build things for you. I still want to play the game myself. I just wanted a hand along
-the way: someone to organize my ideas and guide my long-term projects.
+I tried mods and AI tools that build things for you, but that just wasn't fun for me. I still wanted to *play* the
+game. What I actually needed was someone to keep my ideas organized and keep me on track from one session to the next.
 
-So that's what this is: a mod and a Claude Code plugin that help you plan your city, keep a journal and tick off to-do
-lists with the in-game journal mod. It can even draw detailed plans for your whole map if that's what you're looking for. You still get to actually play: be creative and change
-things up on the fly, without an AI looking over your shoulder while you play.
+So I made City Manager, modeled after the greatest City Manager of all time, Ben Wyatt. It's two things:
 
-## Made with AI with limited human review
+- **A mod:** a journal inside the game with tonight's plan, your projects, your notes and a quick wrap-up when you're
+  done.
+- **A Claude Code plugin:** Claude plays your City Manager between sessions. Before you play, it writes the plan. After
+  you play, it looks at what you built and gets the next plan ready. It can even draw the plans right over your city
+  with City Planning Draft.
 
-Please read this before you install it. **I'm not a coder.** I designed City Manager, decided how it should work, and
-tested every version in my own city, but the code was written by Claude (Anthropic's AI) through Claude Code, working
-closely with me. **No experienced programmer has reviewed it.** It has a lot of automatic tests, and I've tried to be
-careful about safety (the [security report](SECURITY.md) lists exactly what it touches), but treat it as an unreviewed
-hobby project.
+Claude never runs while you play, and you're free to ignore the plan, change your mind and build whatever you want.
+It's your city.
 
-If you know your way around C#, CS2 modding or Python, I'd genuinely welcome a review: open an issue, or come and say hi
-on the Discord.
+## Heads up: this is made with AI
 
-This is a tool I made for my own games and keep improving as I play. I'm sharing it in case it's useful to someone
-else too.
+I want to be upfront about this. I do have minor coding experience, but I could never have built something like this
+without the help of AI. Claude (Anthropic's AI) wrote the code through Claude Code, working closely with me: I designed it, decided how it should work
+and tested every version in my own cities. **No experienced programmer has reviewed it yet.**
 
-## Features
+There are a lot of automatic tests (they run on Windows and Linux with every change, and every build passes 86 checks
+inside a hidden copy of the game before I install it), and the [security report](SECURITY.md) lists exactly what it
+touches. Still, please treat it as a hobby project. Results may vary!
 
-**In the game (the mod)**
-- [x] A journal panel (Ctrl+J, or the button at the top left) with five tabs: Today, Projects, Notes, Wrap-up and City
-- [x] Tonight's checklist, with anything left over from last time carried forward
-- [x] Projects of any size, from one building to the whole map, with steps to tick, your own status and *Show on map*
-- [x] Notes while you play, pinned to where the camera is looking; the City Manager's answers appear under them
-- [x] A four-question wrap-up and *Done for today*
-- [x] Updates from the City Manager show up while you play (the button gets an orange dot)
-- [x] One journal per city, found automatically, and it stays with your city if you rename it
-- [x] A snapshot of your city for the City Manager, taken when you finish, whenever the game saves, or when you ask:
-      roads with their street names, lanes and traffic; buildings and how full each service is; the budget, demand,
-      people and jobs; problems on the map; transit lines; and every road piece you can place right now
-- [x] "Since you loaded the city" in the Wrap-up: the roads you built, the buildings that grew, people and money
-- [x] A window you can dock, or float, move and resize; it remembers where you left it
-- [x] Works on its own as a notebook, without Claude
+If you know C#, CS2 modding or Python and feel like taking a look, I'd really appreciate it. Open an issue or come say
+hi on the Discord.
 
-**Between sessions (the plugin, with Claude Code)**
-- [x] A briefing before you play: a short task list and your projects' next steps, sized to the time you say you have
-- [x] A post-game review after you play: what you built, an answer to every note, what's still open, and the next plan
-- [x] Plans drawn over your city with City Planning Draft: numbered build steps with the exact road pieces and
-      junctions by their menu names, named so you always know which is which (`Riverton 4`, `Now · Main street`)
-- [x] Your own drawings in the planner are kept when the City Manager writes a new plan
-- [x] Nothing drops off the list: open tasks carry over, stale ones get asked about, and projects keep their history
-- [x] One-line install in Claude Code, and a first-run setup that checks your game and makes your city's journal
-- [x] A founding chat for a brand-new city, played like the opening of an old text adventure: your City Manager helps
-      you choose a map (with pictures of each), checks your playset, asks about the city you want (every part optional),
-      gives you the New Game settings, and has the journal waiting before the city even exists
-- [x] A first road plan for a new city, drawn from a survey of its map: the main roads and highways in phases, checked
-      against the city and drawn as pictures, or as a plan in City Planning Draft if you want one
+## What it does
+
+**In the game**
+- Press **Ctrl+J** (or click the cones) to open your journal: Today, Projects, Notes, Wrap-up and City
+- Tonight's to-do list, with anything you didn't get to carried over
+- Projects of any size, from one building to the whole map, with steps to tick off and *Show on map*
+- Build cards: a step can come with its own close-up picture and a button that takes the camera right to the spot
+- Notes while you play, pinned to wherever you're looking. Your City Manager answers them next time
+- A quick wrap-up when you're done, plus what changed since you loaded the city
+- A snapshot of your city for your City Manager: roads and street names, buildings, the budget, services, problems,
+  transit, the map itself and every road piece you can build right now
+- A window you can dock or float wherever you like, with text that follows the game's text size setting
+- Works fine on its own as a notebook, no Claude needed
+
+**Between sessions (with Claude Code)**
+- A pre-game briefing: a short to-do list, sized to however much time you've got
+- A post-game report: what you built compared with the plan, the numbers since last time, and an answer to every note
+- Plans drawn over your city in City Planning Draft, with numbered steps and the exact road pieces to use
+- A founding chat for a brand-new city: help picking a map, what kind of city you want, and its first roads
+- Taking over a city you already have: a tour of what's there, and your half-finished plans turned into projects
+- Nothing falls off the list: open tasks carry over and projects keep their history
 
 **Coming next**
-- [ ] Reports straight from the snapshot: your numbers against last session, a fresh map, and steps checked in the city
-- [ ] Build steps you can jump to: each step with its own picture and a *Show on map* spot
 - [ ] *Show in planner*: open a project's plan in City Planning Draft with one click
-- [ ] Notes about the building, road or district you've selected, and notes marked as questions for the City Manager
-- [ ] Text that follows the game's text size setting
-- [ ] Roundabouts and Road Builder roads named in the build steps
+- [ ] Notes about the building, road or district you've selected, and notes that are questions for your City Manager
+- [ ] Fewer setup steps (I know there are a lot right now)
+- [ ] Other languages, eventually
 
-**Later**
-- [ ] Findings that stay tracked from report to report (a road-hierarchy check first), and trends over many sessions
-- [ ] Pins on the map, nudges at a game date or milestone, and a short chronicle of your city in each report
-- [ ] Other languages
+## How it works
 
-## How
+1. **Before you play,** open Claude Code and type `/city-manager:city-manager`, then tell it you're about to play. It
+   checks where your city's at and puts tonight's plan in your journal.
+2. **Close Claude and play.** Press Ctrl+J in the game and your plan is there. Follow it as much or as little as you
+   want, and jot down a note whenever something bugs you.
+3. **When you're done,** answer the wrap-up questions, press *Done for today*, then save and close the game. Type the
+   same command and tell it you just played. You get a report on your session and the next plan.
 
-**1. Check in before you play.** Open Claude Code and tell it you're about to play. Your City Manager looks at where your
-city stands (the snapshot the mod took when you last played, your notes, everything still open) and gets you set up:
-- tonight's briefing in your journal: a short list of tasks to tick off, and your projects with their next steps;
-- plans drawn right over your city with City Planning Draft: the roads, zones and junctions to build, numbered in the
-  order to build them, each with the exact pieces to use.
+## The rules it plays by
 
-**2. Close Claude and play.** Press Ctrl+J in the game and your journal is there. Follow the plan as much or as little
-as you like. When something bugs you, jot a note; it gets an answer next time. No AI runs while you play.
-
-**3. Check out when you're done.** Answer the four short wrap-up questions, press *Done for today*, then save and close
-the game. Open Claude Code back up and tell it you've just played. You get a full post-game review (what you built
-compared with the plan, an answer to every note, what's still open) and an updated plan, ready for your next check-in.
-
-## Oh no-nos
-
-- **It never builds anything.** It plans, explains and keeps track; you decide and you build. Ignore the plan whenever
-  you like: it's your city.
-- **No AI in the game, and no internet.** The mod never goes online and never talks to an AI. Claude only runs when you
-  open it, between sessions.
+- **It never builds anything.** It plans and keeps track. You decide and you build.
+- **No AI in the game, and no internet.** The mod never goes online. Claude only runs when you open it, between
+  sessions.
 - **It stays out of your save.** Everything lives in its own folder next to your saves (`ModsData/CityManager`), as
   plain files you can open and read.
 
-## Requirements
+## What you need
 
-- **Cities: Skylines II**, on Windows, or on Linux through Steam's Proton.
-- **City Planning Draft** by nooolan (Paradox Mods 155935), which draws the plans over your city. It's a required mod,
-  so the launcher installs it along with City Manager.
-- **Claude Code**, for the City Manager itself. It comes with a paid Claude plan and runs on your own computer (in the
-  Claude desktop app's Code tab, or in a terminal). The plugin's scripts also need [uv](https://docs.astral.sh/uv/),
-  which fetches the Python they run on.
+- **Cities: Skylines II,** on Windows, or on Linux through Steam's Proton.
+- **City Planning Draft** by nooolan, which draws the plans over your city. It installs automatically with City Manager.
+- **Claude Code,** which comes with a paid Claude plan. It runs on your own computer, in the Claude desktop app's Code
+  tab or in a terminal. The plugin's scripts also need [uv](https://docs.astral.sh/uv/), which grabs the Python they
+  run on.
 
-No Claude? The mod still works on its own as an in-game notebook for your notes, projects and wrap-ups, and you can
-write a journal by hand ([format/README.md](format/README.md)).
+No Claude? The mod still works on its own as a notebook for your notes, projects and wrap-ups, and you can even write a
+journal by hand ([format/README.md](format/README.md)).
 
 ## Getting started
 
-1. **The mod.** Subscribe to [City Manager on Paradox Mods](https://mods.paradoxplaza.com/mods/169373/Windows) in the Paradox Launcher (or on the website).
-   City Planning Draft comes with it. Add mods in the launcher, not from inside the game. To build it yourself instead:
-   [docs/DEVELOPING.md](docs/DEVELOPING.md).
-2. **uv,** which runs the plugin's scripts. On Windows: `winget install astral-sh.uv`. Elsewhere: the one-line install on
+1. **Get the mod.** Subscribe to [City Manager on Paradox Mods](https://mods.paradoxplaza.com/mods/169373/Windows) in the
+   Paradox Launcher or on the website. City Planning Draft comes with it. Add mods in the launcher, not from inside the
+   game. (Want to build it yourself? See [docs/DEVELOPING.md](docs/DEVELOPING.md).)
+2. **Install uv.** On Windows: `winget install astral-sh.uv`. Anywhere else: the one-line install on
    [docs.astral.sh/uv](https://docs.astral.sh/uv/).
-3. **The plugin.**
+3. **Install the plugin.**
    - **In the Claude desktop app** (Code tab): open the plugins menu (**+** next to the prompt box), then **Add** →
-   **Add marketplace** → **Add from a repository**, paste the full address `https://github.com/mayorgergich/cs2-city-manager`, press **Sync**, and
-   install **city-manager**.
-   - **In Claude Code in a terminal:** type `/plugin install city-manager --marketplace mayorgergich/cs2-city-manager`
+     **Add marketplace** → **Add from a repository**, paste `https://github.com/mayorgergich/cs2-city-manager`, press
+     **Sync**, and install **city-manager**.
+   - **In Claude Code in a terminal:** `/plugin install city-manager --marketplace mayorgergich/cs2-city-manager`
      (Claude Code 2.1.275 or later; on older versions, `/plugin marketplace add mayorgergich/cs2-city-manager`, then
      `/plugin install city-manager@cs2-city-manager`).
 
-   If it asks where to install, choose **for you** (your user account), so it works in any folder.
-4. **In the game first: open the journal and take a snapshot.** This is required before the City Manager can help:
-   it reads your city from a snapshot the mod takes, so without a journal and a snapshot it has nothing to read.
-   1. Make a new city or load one you have.
-   2. Press **Ctrl+J**, then *Start a new journal for this city*.
-   3. On the journal's **City** tab, press **Take a snapshot**.
-   4. Save, and go back to the main menu.
-5. **Then in Claude Code** (the same folder each time: it remembers what you've allowed per folder; see the
-   [guide](docs/guide.md#talking-to-the-city-manager)), type `/city-manager:city-manager`. Your City Manager welcomes you and asks: are we
-   continuing work on a city, or starting a new one? A new city gets **founded** properly (a charter, then the first
-   road plan and planner drafts); a city you already have gets **taken over** (a tour of what's there, where it goes
-   next, your half-built plans as projects). Both end with projects and a first briefing in your journal. Not made the
-   city yet? Say so, and it helps you choose a map first.
+   If it asks where to install it, pick **for you** so it works in any folder.
+4. **Start a journal in the game.** Load your city (or make a new one), press **Ctrl+J** and pick *Start a new journal
+   for this city*. That's it: the mod takes the snapshot your City Manager reads from right away. Save, then close the
+   game or go back to the main menu.
+5. **Meet your City Manager.** In Claude Code, type `/city-manager:city-manager`. It asks whether you're continuing a
+   city or starting a new one, and takes it from there. A new city gets founded properly: what kind of city you want,
+   its first roads and planner drafts. A city you already have gets a tour, a plan for what's next, and your
+   half-finished plans turned into projects. Haven't made the city yet? Just say so, and it'll help you pick a map
+   first.
 
-The [guide](docs/guide.md) walks through all of it, with a flowchart.
+Use the same folder each time: Claude Code remembers what you've allowed it to do per folder. The
+[guide](docs/guide.md) walks through all of it with a flowchart, and from then on it's the same command before and after
+every session.
 
-From then on, the same command before and after every session: it asks whether you're about to play or just
-played, and writes tonight's briefing or the report (see "How" above). Words after it are shortcuts: `/city-manager:city-manager prep me`,
-`/city-manager:city-manager report`.
+## Where it's at
 
-## Current progress
-
-Early days. The first beta is on [Paradox Mods](https://mods.paradoxplaza.com/mods/169373/Windows) since 25 November 2026. I play with it in my own city every
-session, and it has a lot of automatic tests. I play on Linux. Windows is covered by the
-automatic tests but hasn't had a player yet, so if you're on Windows, you'd be a big help. What's planned is in the
-Features list above.
-
-## Design principle
-
-I designed City Manager as a player, around the way I actually play, and built it with Claude Code: I described what I
-needed, Claude wrote the code and the tests, and I tried every version in my own city. Every change runs automatic
-tests on Windows and Linux, and every build I install passes 60 checks inside a hidden copy of the game first. Even so,
-it's a hobby project by one player, so please tell me when something's off.
+It's early days. The beta has been on [Paradox Mods](https://mods.paradoxplaza.com/mods/169373/Windows) since
+25 November 2026, and I play with it every session. I play on Linux, so Windows hasn't had a real player yet. If you're
+on Windows, you'd be a huge help.
 
 ## Questions, ideas and bugs
 
 - **Discord:** <https://discord.gg/Rtea83Gnb9> for questions, ideas, and showing off your city.
-- **GitHub:** open an issue on this repo for bugs and suggestions.
+- **GitHub:** open an issue here for bugs and suggestions.
 
-For a bug, the mod's log helps a lot: `Logs/CityManager.log` in the game's user-data folder. It never shows your user
-name. For a security or privacy problem, please tell me privately first (see [SECURITY.md](SECURITY.md)).
+If you hit a bug, the mod's log helps a lot: `Logs/CityManager.log` in the game's user-data folder (it never shows your
+user name). For a security or privacy problem, please tell me privately first ([SECURITY.md](SECURITY.md)).
 
 ## More detail
 

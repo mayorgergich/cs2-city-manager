@@ -537,7 +537,7 @@ def cmd_newgame(src):
     for o in meta.get("options") or []:
         steps.append(f"Switch on **{str(o).capitalize()}**.")
     steps += [
-        "Start. Once the city has loaded, press **Ctrl+J** (your journal is waiting) and, on its **City** tab, press **Take a snapshot**: the City Manager reads your city from it.",
+        "Start. Once the city has loaded, press **Ctrl+J**: your journal is waiting, and a few seconds after the city loads it takes the snapshot the City Manager reads your city from.",
     ]
     planned = bool({"backbone", "drafts"} & set(meta.get("wants") or []))
     steps += ([f"Save (**Save Game**, name it **{city}**), go back to the main menu, and tell the City Manager the city stands: "

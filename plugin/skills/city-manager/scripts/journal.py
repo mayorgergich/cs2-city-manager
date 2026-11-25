@@ -828,7 +828,7 @@ summary = "The City Manager's office is open. A few small things tonight, so I c
 
 [[tasks]]
 id = "snapshot"
-text = "On the **City** tab, press **Take a snapshot**: the City Manager reads your city from it"
+text = "Look at the **City** tab: your city's first snapshot is there, and the City Manager reads your city from it"
 
 [[tasks]]
 id = "note"
@@ -857,7 +857,7 @@ summary = {summary}
 
 [[tasks]]
 id = "pause"
-text = "On the **City** tab, press **Take a snapshot**: the City Manager reads your city from it"
+text = "Pause for a moment: a few seconds after the city loads, the journal takes its first snapshot (the **City** tab shows when)"
 
 [[tasks]]
 id = "save"
@@ -947,8 +947,8 @@ def cmd_cities(as_json=False):
         print(json.dumps(rows, ensure_ascii=False))
         return 0
     if not rows:
-        print("No city has a City Manager journal yet. In game: load the city, press Ctrl+J, Start a new journal for this city, "
-              "then Take a snapshot on the journal's City tab, and save.")
+        print("No city has a City Manager journal yet. In game: load the city, press Ctrl+J, Start a new journal for this city "
+              "(that takes the first snapshot), and save.")
         return 0
     print("# Cities with a City Manager journal\n")
     for r in rows:
@@ -1019,7 +1019,7 @@ def cmd_init(name=None, jid=None, folder=None, make_active=False, founding=False
         path.write_text(text, encoding="utf-8", newline="\n")
     write(src / "journal.toml", f"id = {toml_str(jid)}\ncity = {toml_str(name)}\naliases = []\nmanager = \"Claude, City Manager\"\n")
     city_summary = ("Founded today. The City Manager reads the city from its start snapshot at the next check-in." if founding else
-                    "The City Manager hasn't looked at this city yet. Take a snapshot on this tab, then ask Claude for a report.")
+                    "The City Manager hasn't looked at this city yet. Save the city, then ask Claude for a report.")
     write(src / "city.md", f"+++\ntitle = {toml_str(name)}\ndate = {toml_str(today.strftime('%d %b %Y'))}\nsummary = {toml_str(city_summary)}\n+++\n")
     bid, date = toml_str(today.strftime("%Y-%m-%d")), toml_str(today.strftime("%d %b %Y"))
     write(src / "briefing.md", FOUNDING.format(bid=bid, date=date, summary=toml_str(f"If you can read this, {name} stands. Welcome to our city."))
@@ -1098,9 +1098,9 @@ def cmd_doctor():
     journals = sorted(d for d in ROOT.iterdir() if d.is_dir() and (d / "journal.json").exists()) if ROOT.is_dir() else []
     print(f"{ok(ROOT.is_dir())}Journals: {ROOT}" + ("" if ROOT.is_dir() else " (none yet: the mod makes this folder the first time the game runs with it)"))
     for d in journals:
-        snap = d / "city.json"
-        when = datetime.fromtimestamp(snap.stat().st_mtime).strftime("%d %b %H:%M") if snap.exists() else None
-        print(f"      {d.name}: " + (f"snapshot {when}" if when else "no snapshot yet (City tab: Take a snapshot; Done for today and saves take one too)"))
+        snap = next((d / n for n in ("city.json", "city-start.json") if (d / n).exists()), None)
+        when = datetime.fromtimestamp(snap.stat().st_mtime).strftime("%d %b %H:%M") if snap else None
+        print(f"      {d.name}: " + (f"snapshot {when}" if when else "no snapshot yet (it takes one when the journal starts in game; Done for today and saves take one too)"))
     registry, cities = load_registry()
     known = cities.get("cities") or {}
     print(f"{ok(known)}Cities set up: {registry}" + (f" ({', '.join(known)}; active: {cities.get('active', '?')})" if known else " (none yet)"))

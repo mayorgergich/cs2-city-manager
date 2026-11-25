@@ -178,8 +178,8 @@ When the Mayor hasn't made the city yet, the founding starts before New Game and
    tiles means the road plan asks where to start.
 5. The character (§ 3) and the road plan's brief (§ 4), as the Mayor chose.
 6. `founding.py newgame <city source>` prints the New Game steps: show them. With a road plan, the Mayor makes the
-   city, presses Ctrl+J once it loads (the journal is waiting under its name), presses **Take a snapshot** on the City
-   tab, saves, goes back to the main menu, and
+   city (the journal waiting under its name links by itself once it loads and takes the first snapshot a few seconds
+   later), saves, goes back to the main menu, and
    says so here: the plan (§ 5) and the first briefing (§ 6) follow. Without one, write the first briefing with its
    first-hour list now, and say goodbye: Claude stays closed while they play.
 

@@ -14,8 +14,8 @@ Code in a terminal (2.1.275 or later):
 ```
 
 Choose **for you** (your user account) if it asks, so it works in any folder. Then, **required first, in the game:** make or load your
-city, press Ctrl+J and *Start a new journal for this city*, press **Take a snapshot** on the journal's City tab, and save.
-The City Manager reads your city from that snapshot. Then type `/city-manager:city-manager`: your City Manager asks whether you're
+city, press Ctrl+J and *Start a new journal for this city* (that takes the snapshot the City Manager reads your city
+from), and save. Then type `/city-manager:city-manager`: your City Manager asks whether you're
 continuing a city or starting a new one, and takes it from there. It needs the City Manager mod in the game and
 [uv](https://docs.astral.sh/uv/) to run its scripts. How to use it day to day:
 [the guide](https://github.com/mayorgergich/cs2-city-manager/blob/main/docs/guide.md).

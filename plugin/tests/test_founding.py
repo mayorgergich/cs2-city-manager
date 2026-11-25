@@ -233,7 +233,7 @@ class Founding(unittest.TestCase):
         self.assertIn("switch **Left-hand traffic** on", out)
         self.assertIn("Game mode: **Normal** (the default).", out)
         self.assertIn("Switch on **Unlimited money**.", out)
-        self.assertIn("**Take a snapshot**", out)                       # the snapshot step is spelled out
+        self.assertIn("takes the snapshot the City Manager reads", out)   # the snapshot is said, and needs no button
         self.assertIn("play as long as you want", out)                  # no road plan asked for: play after founding
         self.founding('+++\ncity = "Riverton"\nmap = "Plains"\nwants = ["backbone", "drafts"]\n+++\n')
         _, planned = self.run_tool("newgame", self.city / "journal")

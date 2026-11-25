@@ -68,13 +68,13 @@ One conversation sets City Manager up for a city, new or old. Your City Manager 
 **founds** the city properly or **takes it over**, and both end with projects and a first briefing in your journal
 (and planner drafts, if you want them).
 
-**1. In the game first: open the journal and take a snapshot.** This is required. The City Manager reads your city
-from a snapshot the mod takes; without a journal and a snapshot it has nothing to read.
+**1. In the game first: start a journal.** This is required. The City Manager reads your city from a snapshot the
+mod takes, and the mod takes the first one as soon as the journal starts.
 1. Make a new city (New Game, any map and settings), or load one you already have.
-2. Press **Ctrl+J** (or the cones button at the top left), then *Start a new journal for this city*.
-3. On the journal's **City** tab, press **Take a snapshot**. (The mod also takes one by itself a few seconds after the
-   journal starts, and on every save; pressing it makes sure.)
-4. Save, and go back to the main menu (or quit). Claude never runs while you play; the main menu isn't playing.
+2. Press **Ctrl+J** (or the cones button at the top left), then *Start a new journal for this city*. That takes the
+   first snapshot. (After that, *Done for today* and every save take a new one, and so does **Take a snapshot** on the
+   journal's **City** tab.)
+3. Save, and go back to the main menu (or quit). Claude never runs while you play; the main menu isn't playing.
 
 **2. Then in Claude Code,** type `/city-manager:city-manager`. It opens in character, like the start of an old text adventure, and
 asks one thing: *are we continuing work on a city, or starting a new one?*
@@ -129,8 +129,9 @@ plans, which match the first briefing's steps.
 **No city made yet?** Choose *starting a new one* and say you haven't made it. The founding then starts before New
 Game: maps that fit what
 you want, with pictures, the New Game settings in the screen's own words, and your city's character. Then you make the
-city (the chat gives the exact steps: the name must match). Once it loads, press **Ctrl+J** (the journal is waiting
-under the name), press **Take a snapshot** on its **City** tab, save, go back to the main menu, and tell the chat. The road plan and the drafts follow, as above.
+city (the chat gives the exact steps: the name must match). Once it loads, the journal waiting under its name links by
+itself and takes the first snapshot a few seconds later (press **Ctrl+J** to see it). Save, go back to the main menu,
+and tell the chat. The road plan and the drafts follow, as above.
 
 ## Every session after that
 
@@ -148,7 +149,7 @@ under the name), press **Take a snapshot** on its **City** tab, save, go back to
 | The custom map isn't on the New Game screen | Its mod isn't on in the active playset: switch it on in the Paradox Launcher, then restart the game |
 | The setup check says uv or Pillow is missing | Install uv (above). If Python and Pillow are already installed, the check says the scripts can run without it |
 | The City tab shows no snapshot | Press **Take a snapshot** on the City tab. Done for today and every save take one too |
-| The City Manager says it can't read your city | It needs a journal and a snapshot: load the city, press **Ctrl+J** (*Start a new journal for this city* if there's none), **Take a snapshot** on the City tab, save, then ask again |
+| The City Manager says it can't read your city | It needs a journal: load the city, press **Ctrl+J** and *Start a new journal for this city* if there's none (that takes the first snapshot), save, then ask again |
 | Claude talks about the wrong city | Name the city you mean, or ask it to make that city the active one |
 | A guide didn't appear in the planner | In City Planning Draft, press **Import latest file**: it loads the newest guide for this city |
 

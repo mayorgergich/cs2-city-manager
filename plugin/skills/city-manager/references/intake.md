@@ -28,8 +28,9 @@ character and give exact steps, as in § 4) and `journal.py cities` (every city 
 set up here, with their snapshot, and journals started in game that aren't set up yet).
 
 **Nothing works without a journal and a snapshot.** You read the city only from the snapshot the mod writes into the
-city's journal folder. Whenever a city has no journal, or no snapshot yet ("no snapshot yet" in `journal.py cities`),
-ask the Mayor for exactly this, in plain steps: load it, press Ctrl+J, *Start a new journal for this city*, then **Take a snapshot** on the journal's City tab, save, go back to the main menu, and say so here. Then carry on.
+city's journal folder; starting a journal takes the first one at once (`city-start.json`), and *Done for today*, every
+save and **Take a snapshot** on the City tab take a newer one (`city.json`). Whenever a city has no journal, or no
+snapshot yet ("no snapshot yet" in `journal.py cities`), ask the Mayor for exactly this, in plain steps: load it, press Ctrl+J, *Start a new journal for this city* (that takes the first snapshot), save, go back to the main menu, and say so here. Then carry on.
 
 ## 2. Starting a new one
 
@@ -41,7 +42,7 @@ ask the Mayor for exactly this, in plain steps: load it, press Ctrl+J, *Start a 
      so in a line and offer the takeover instead ("Napster already has 3,778 people: shall I take it over as
      it stands?");
    - **no journal for it:** ask whether they've made it yet.
-     - **Made, no journal:** load it, press Ctrl+J, *Start a new journal for this city*, then **Take a snapshot** on the journal's City tab, save, go back to the main menu, and say so here. Then on as above.
+     - **Made, no journal:** load it, press Ctrl+J, *Start a new journal for this city* (that takes the first snapshot), save, go back to the main menu, and say so here. Then on as above.
      - **Not yet:** `founding.md`, "Before the city exists": help choosing a map (optional), the New Game screen, and
        the journal waiting under the city's name; once they've made it and come back from the main menu, founding mode.
 
@@ -59,7 +60,7 @@ ask the Mayor for exactly this, in plain steps: load it, press Ctrl+J, *Start a 
      town, transit first"), ask only what it leaves open, and pick up where it ends, usually the first plan
      (`founding.md`, § 5).
 2. **No city has a journal yet:** ask "Setting City Manager up in a city you already have?" (**Yes, a city I have** ·
-   **No, a new one**). Yes: load it, press Ctrl+J, *Start a new journal for this city*, then **Take a snapshot** on the journal's City tab, save, go back to the main menu, and say so here; then `journal.py init "<name>" --active` adopts it, and
+   **No, a new one**). Yes: load it, press Ctrl+J, *Start a new journal for this city* (that takes the first snapshot), save, go back to the main menu, and say so here; then `journal.py init "<name>" --active` adopts it, and
    `city.py stage` decides (usually the takeover). No: § 2.
 
 ## 4. Say what you found, and agree on the mode
