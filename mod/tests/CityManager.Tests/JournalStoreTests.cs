@@ -964,3 +964,66 @@ namespace CityManager.Tests
         }
     }
 }
+
+namespace CityManager.Tests
+{
+    /// <summary>Where the Mayor puts the panel (layout.json): per screen shape, checked, kept across restarts.</summary>
+    public class WindowLayout
+    {
+        [Fact]
+        public void A_layout_is_saved_checked_and_read_back_by_the_next_start()
+        {
+            using var s = new Sandbox();
+            var store = new JournalStore(s.Root);
+            Assert.Empty(store.Layout);
+            store.SaveLayout("{\"1.78\":{\"mode\":\"floating\",\"x\":300.04,\"y\":120,\"w\":640,\"bodyH\":500,\"extra\":\"x\"},\"1.33\":{\"mode\":\"docked\"}}");
+            Assert.Equal("floating", (string)store.Layout["1.78"]["mode"]);
+            Assert.Equal(300.0, (double)store.Layout["1.78"]["x"]);
+            Assert.Null(store.Layout["1.78"]["extra"]);
+            Assert.True(File.Exists(Path.Combine(s.Root, JournalStore.LayoutFile)));
+            var next = new JournalStore(s.Root);   // the next game start
+            Assert.Equal(640.0, (double)next.Layout["1.78"]["w"]);
+            Assert.Equal("docked", (string)next.Layout["1.33"]["mode"]);
+        }
+
+        [Theory]
+        [InlineData("{\"../x\":{\"mode\":\"floating\"}}")]
+        [InlineData("{\"1.78\":\"floating\"}")]
+        [InlineData("{\"16:9\":{\"mode\":\"floating\"}}")]
+        public void Odd_keys_and_values_are_dropped(string json)
+        {
+            using var s = new Sandbox();
+            var store = new JournalStore(s.Root);
+            store.SaveLayout(json);
+            Assert.Empty(store.Layout);
+        }
+
+        [Fact]
+        public void Numbers_are_kept_finite_and_in_range_and_modes_known()
+        {
+            var o = JournalStore.CleanLayout(JObject.Parse("{\"1.78\":{\"mode\":\"<script>\",\"x\":1e30,\"y\":-1e30,\"w\":\"wide\",\"bodyH\":true}}"));
+            Assert.Equal("docked", (string)o["1.78"]["mode"]);
+            Assert.Equal(20000.0, (double)o["1.78"]["x"]);
+            Assert.Equal(-20000.0, (double)o["1.78"]["y"]);
+            Assert.Null(o["1.78"]["w"]);
+            Assert.Null(o["1.78"]["bodyH"]);
+            var many = new JObject();
+            for (var i = 10; i < 40; i++) many[$"{i}.00"] = new JObject { ["mode"] = "docked" };
+            Assert.Equal(JournalStore.MaxLayouts, JournalStore.CleanLayout(many).Count);
+        }
+
+        [Fact]
+        public void Junk_too_long_or_damaged_files_leave_the_usual_place()
+        {
+            using var s = new Sandbox();
+            var store = new JournalStore(s.Root);
+            store.SaveLayout("not json");
+            store.SaveLayout("[1,2]");
+            store.SaveLayout(new string('x', JournalStore.MaxLayoutChars + 1));
+            store.SaveLayout(null);
+            Assert.Empty(store.Layout);
+            File.WriteAllText(Path.Combine(s.Root, JournalStore.LayoutFile), "{ broken", new UTF8Encoding(false));
+            Assert.Empty(new JournalStore(s.Root).Layout);
+        }
+    }
+}

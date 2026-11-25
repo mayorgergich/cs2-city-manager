@@ -70,6 +70,69 @@ namespace CityManager
         {
             Root = Path.GetFullPath(root);
             Directory.CreateDirectory(Root);
+            Layout = ReadLayout();
+        }
+
+        // --- Where the Mayor put the panel: layout.json, one entry per screen shape ("1.78" for 16:9, "1.33" for 4:3).
+
+        public const string LayoutFile = "layout.json";
+        public const int MaxLayouts = 12, MaxLayoutChars = 16 * 1024;
+        private static readonly System.Text.RegularExpressions.Regex ScreenShape = new System.Text.RegularExpressions.Regex(@"^\d{1,2}\.\d{2}$");
+
+        /// <summary>The panel's saved places, already checked (empty when there are none).</summary>
+        public JObject Layout { get; private set; }
+
+        private JObject ReadLayout()
+        {
+            try
+            {
+                var fi = new FileInfo(Path.Combine(Root, LayoutFile));
+                return fi.Exists && fi.Length <= MaxLayoutChars ? CleanLayout(ReadJson(fi)) : new JObject();
+            }
+            catch (Exception)
+            {
+                return new JObject();   // a damaged file just means the default place
+            }
+        }
+
+        /// <summary>Only screen-shape keys, each with a mode and four finite numbers in a sane range; anything else is
+        /// dropped. The panel's own trigger sends this, but any mod can call it.</summary>
+        public static JObject CleanLayout(JObject input)
+        {
+            var o = new JObject();
+            if (input == null) return o;
+            foreach (var p in input.Properties())
+            {
+                if (o.Count >= MaxLayouts) break;
+                if (!ScreenShape.IsMatch(p.Name) || !(p.Value is JObject v)) continue;
+                var entry = new JObject { ["mode"] = (string)v["mode"] == "floating" ? "floating" : "docked" };
+                foreach (var k in new[] { "x", "y", "w", "bodyH" })
+                {
+                    var t = v[k];
+                    if (t == null || (t.Type != JTokenType.Integer && t.Type != JTokenType.Float)) continue;
+                    var d = (double)t;
+                    if (double.IsNaN(d) || double.IsInfinity(d)) continue;
+                    entry[k] = Math.Round(Math.Max(-20000, Math.Min(20000, d)), 1);
+                }
+                o[p.Name] = entry;
+            }
+            return o;
+        }
+
+        /// <summary>The panel's trigger: saves the Mayor's layouts (checked) to layout.json.</summary>
+        public void SaveLayout(string json)
+        {
+            if (string.IsNullOrEmpty(json) || json.Length > MaxLayoutChars) return;
+            try
+            {
+                var clean = CleanLayout(Parse(json));
+                WriteText(Path.Combine(Root, LayoutFile), clean.ToString(Formatting.Indented));
+                Layout = clean;
+            }
+            catch (Exception e)
+            {
+                Warning("layout.json can't be written: " + e.Message);
+            }
         }
 
         private string Dir => Path.Combine(Root, Folder);

@@ -103,6 +103,7 @@ namespace CityManager
                 if (done) RequestSnapshot("done", null);
             })));
             AddBinding(new TriggerBinding(Group, "snapshot", () => Do(() => RequestSnapshot("button", null))));
+            AddBinding(new TriggerBinding<string>(Group, "saveLayout", json => Do(() => _store.SaveLayout(json))));
             AddBinding(new TriggerBinding<float, float, float>(Group, "flyTo", FlyTo));
             AddBinding(new TriggerBinding<string>(Group, "pick", folder => Do(() => _store.Pick(folder))));
             AddBinding(new TriggerBinding(Group, "unpick", () => Do(() => _store.Pick(null))));
@@ -405,6 +406,7 @@ namespace CityManager
                     ["problem"] = _snapProblem,
                 },
                 ["session"] = SessionInfo(),
+                ["layout"] = _store.Layout,
             }.ToString(Formatting.None));
         }
 

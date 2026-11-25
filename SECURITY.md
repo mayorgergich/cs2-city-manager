@@ -34,6 +34,7 @@ Only inside `ModsData/CityManager`:
 | `<journal>/city.json` | The city snapshot | *Done for today*, every game save, *Take a snapshot* |
 | `<journal>/city-start.json` | The snapshot at the start of a session | A few seconds after a city loads |
 | `cities.json`, `picks.json` | Which journal belongs to which city | When you pick or start a journal |
+| `layout.json` | Where you put the panel and its size, per screen shape | When you move, resize, float or dock it |
 
 - Writes are atomic: a crash leaves the old file or the new one, never half of one.
 - Once, on the first start of version 0.5 or later, it renames its old folder `ModsData/CityJournal` to

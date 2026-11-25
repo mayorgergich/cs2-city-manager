@@ -7,6 +7,11 @@ and the Claude Code plugin. The journal's file format is in [format/README.md](.
 
 Press **Ctrl+J** (or the cones button at the top left) in a city.
 
+The panel opens docked on the right. **Float** (in its header) lets it float: drag it by its title, and resize it from
+its left, right and bottom edges or its bottom corners. **Dock** puts it back. Where you leave it is remembered,
+separately for each screen shape (a 16:9 monitor, a 4:3 tablet stream), and it always stays on screen, clear of the
+game's buttons at the top and its toolbar at the bottom.
+
 | Tab | What it holds |
 |---|---|
 | **Today** | The briefing for this session with its checklist, anything still open from the last briefing, and the next step of your top projects in progress |
@@ -32,6 +37,7 @@ ModsData/CityManager/
   <journal>/city.json       the city snapshot: roads, buildings, budget, demand, people, services, problems, transit,
                             the build catalogue, terrain (written on Done for today, on every save, and from Take a snapshot)
   <journal>/city-start.json the same, taken a few seconds after the city loaded: what the session started from
+  layout.json               where you put the panel and its size, per screen shape
 ```
 
 Until 0.5 the mod was called City Journal: its `ModsData/CityJournal` folder moves to `ModsData/CityManager` by itself

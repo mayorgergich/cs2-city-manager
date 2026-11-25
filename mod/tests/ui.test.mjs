@@ -317,3 +317,72 @@ test("the Wrap-up says what changed since the city loaded", () => {
     assert.match(tab, /Since you loaded the city.*3 new buildings grew.*As of 19:20/s);
     assert.match(text(render(h(T.WrapUpTab, { j: {}, mayor: {}, info: {} }))), /fills in after the game next saves/);
 });
+
+test("the window: docked by default, floating windows stay on screen and clear of the game's bars", () => {
+    const scr = { px: [1920, 1080], w: 1920, h: 1080, k: 1 };
+    assert.equal(T.screenKey(scr), "1.78");
+    assert.equal(T.screenKey({ px: [2048, 1536] }), "1.33");
+    const docked = T.fitLayout(undefined, scr);
+    assert.equal(docked.mode, "docked");
+    assert.equal(docked.w, 590);
+    const s = T.panelStyle(docked);
+    assert.equal(s.right, "12rem");
+    assert.equal(s.left, undefined);
+
+    const far = T.fitLayout({ mode: "floating", x: 5000, y: -300, w: 99999, bodyH: 99999 }, scr);
+    assert.equal(far.w, T.WIN.maxW);
+    assert.equal(far.x, 1920 - T.WIN.maxW);               // pushed back on screen
+    assert.equal(far.y, T.WIN.top);                        // below the game's buttons at the top
+    assert.ok(far.y + T.WIN.header + far.bodyH <= 1080 - T.WIN.bottom);   // above the bottom toolbar
+    const tiny = T.fitLayout({ mode: "floating", w: 10, bodyH: 10 }, scr);
+    assert.equal(tiny.w, T.WIN.minW);
+    assert.equal(tiny.bodyH, T.WIN.minBodyH);
+    const junk = T.fitLayout({ mode: "floating", x: NaN, y: "top", w: null }, scr);
+    assert.ok(Number.isFinite(junk.x) && Number.isFinite(junk.y) && junk.w === 590);
+    const fs = T.panelStyle({ mode: "floating", x: 100, y: 200, w: 600, bodyH: 400 });
+    assert.equal(fs.left, "100rem");
+    assert.equal(fs.top, "200rem");
+    assert.equal(fs.right, undefined);
+    assert.equal(fs.width, "600rem");
+
+    // A 4:3 screen (the iPad) is 1920 x 1440 rem: the same window fits lower down.
+    const ipad = { px: [2048, 1536], w: 1920, h: 1440, k: 2048 / 1920 };
+    const low = T.fitLayout({ mode: "floating", x: 0, y: 1200, w: 600, bodyH: 300 }, ipad);
+    assert.equal(low.y, 1440 - T.WIN.bottom - T.WIN.header - 300);
+});
+
+test("dragging moves the window, and the edges and corners resize it", () => {
+    const scr = { px: [1920, 1080], w: 1920, h: 1080, k: 1 };
+    const start = T.fitLayout({ mode: "floating", x: 400, y: 200, w: 600, bodyH: 400 }, scr);
+    const moved = T.dragged(start, "move", 150, 50, scr);
+    assert.deepEqual([moved.x, moved.y, moved.w, moved.bodyH], [550, 250, 600, 400]);
+    const right = T.dragged(start, "r", 100, 0, scr);
+    assert.deepEqual([right.x, right.w], [400, 700]);
+    const left = T.dragged(start, "l", -100, 0, scr);
+    assert.deepEqual([left.x, left.w], [300, 700]);                 // the right edge stays put
+    const narrow = T.dragged(start, "l", 1000, 0, scr);
+    assert.deepEqual([narrow.x, narrow.w], [400 + 600 - T.WIN.minW, T.WIN.minW]);
+    const corner = T.dragged(start, "br", 50, 80, scr);
+    assert.deepEqual([corner.w, corner.bodyH], [650, 480]);
+    const bl = T.dragged(start, "bl", -50, 80, scr);
+    assert.deepEqual([bl.x, bl.w, bl.bodyH], [350, 650, 480]);
+    assert.equal(T.dragged(start, "move", 5000, 5000, scr).x, 1920 - 600);   // never off screen
+    const tall = T.dragged(start, "b", 5000, 5000, scr);
+    assert.equal(tall.y, 200);                                        // growing stops at the toolbar; the window stays put
+    assert.equal(tall.y + T.WIN.header + tall.bodyH, 1080 - T.WIN.bottom);
+    const wide = T.dragged(start, "r", 5000, 0, scr);
+    assert.deepEqual([wide.x, wide.w], [400, T.WIN.maxW]);          // as wide as allowed, from where it was
+    const edge = T.dragged(T.fitLayout({ mode: "floating", x: 1000, y: 200, w: 600, bodyH: 400 }, scr), "r", 5000, 0, scr);
+    assert.deepEqual([edge.x, edge.x + edge.w], [1000, 1920]);    // or to the screen's edge
+});
+
+test("the resize handles: two edges, the bottom, and two corners with grips, each starting its own drag", () => {
+    const calls = [];
+    const handles = T.ResizeHandles({ onStart: (kind, ev) => calls.push([kind, ev.screenX]) });
+    assert.equal(handles.length, 5);
+    handles.forEach((x, i) => x.props.onMouseDown({ screenX: i }));
+    assert.deepEqual(calls, [["l", 0], ["r", 1], ["b", 2], ["bl", 3], ["br", 4]]);
+    assert.deepEqual(handles.filter((x) => x.children.length).map((x) => x.props.key), ["bl", "br"]);   // grips in the bottom corners
+    const saved = T.fitLayout({ mode: "floating", x: 300, y: 150, w: 650, bodyH: 500 }, { px: [1920, 1080], w: 1920, h: 1080, k: 1 });
+    assert.equal(T.panelStyle(saved).left, "300rem");   // a saved window opens where the Mayor left it
+});

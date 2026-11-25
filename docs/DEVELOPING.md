@@ -57,6 +57,7 @@ builds happen on the maintainer's machine. The in-game checks on Windows are man
   - edits from outside: half-written files, edits between polls, backup restore;
   - no user-data path in any message;
   - the journals' folder moving from `ModsData/CityJournal` once;
+  - the window's `layout.json`: checked keys and numbers, read back on the next start, junk ignored;
   - the city snapshot's format (`CitySnapshotTests`): every documented field, fields left out when false or zero,
     numbers that don't follow the machine's language (a German decimal comma), NaN and infinity, the terrain's byte
     order, the list limits and the file-size fallback; the city-wide sections and the new road and building fields; the
@@ -66,7 +67,9 @@ builds happen on the maintainer's machine. The in-game checks on Windows are man
   - the page budget: every tab drawn from a hostile journal stays within its characters, elements and picture pixels;
   - the picture-name filter and picture layout;
   - the merge rule (`format/merge_cases.json`), the Wrap-up's key, built-in property names as ids, the error boundary;
-  - the City tab's snapshot section and its button; the Wrap-up's "Since you loaded the city" lines.
+  - the City tab's snapshot section and its button; the Wrap-up's "Since you loaded the city" lines;
+  - the window: docked by default, floating windows kept on screen and clear of the game's bars (16:9 and 4:3),
+    moving, resizing from each edge and corner (resizing stops at the edges instead of moving the window).
 - **Plugin scripts** (`plugin/tests`, unittest, a fake user-data folder):
   - build and validation;
   - change stamps, including after `journal.json` is lost, and touched but unchanged pages;
@@ -97,10 +100,12 @@ builds happen on the maintainer's machine. The in-game checks on Windows are man
     row of the paused city are the same (it only reads); the City tab's time; the log's timings; the start snapshot when a
     journal is linked, later snapshots in the same session, every city-wide part present with none failed, menu names,
     the catalogue, map tiles and grids, the Wrap-up's "Since you loaded the city", and no snapshot frame over 50 ms;
+  - the window: Float, dragging by the title, resizing from a corner grip, both saved in `layout.json`, the game staying
+    clickable around it, Dock, and floating again where it was left;
   - the key registration;
   - the mod's and the game's UI logs.
 
-- **Counts as of 0.7.0:** 86 mod store (on Windows run twice: .NET 10 and .NET Framework 4.8), 25 panel, 55 plugin scripts (one Windows-only), 70 in game. CI runs the offline ones on Linux and Windows, from a temporary folder named "Zoë Ørsted". The second-city check fails on 0.3.0 (checked 2026-11-24: it linked the second city to the first one's journal).
+- **Counts as of 0.8.0:** 92 mod store (on Windows run twice: .NET 10 and .NET Framework 4.8), 28 panel, 55 plugin scripts (one Windows-only), 77 in game. CI runs the offline ones on Linux and Windows, from a temporary folder named "Zoë Ørsted". The second-city check fails on 0.3.0 (checked 2026-11-24: it linked the second city to the first one's journal).
 - **Windows file handling** (no tester yet, so in CI): saving while another program holds the file (shared for writing,
   or only for reading), `journal.py` replacing `journal.json` while the game reads it, and paths with accents. The C#
   tests also run on .NET Framework 4.8, which, like the game's Mono on Windows, saves through Windows' own functions.

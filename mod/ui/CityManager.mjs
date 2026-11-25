@@ -31,6 +31,8 @@ const ICON_NEW = "coui://ui-mods/images/CityManager-icon-new.svg";
 const PANEL_W = 590;      // rem
 const BODY_W = PANEL_W - 28 - 14; // content width inside the padding, less the scrollbar
 const BODY_H = 700;       // rem
+// The content width of the panel being drawn: pictures and the wrap-up's text boxes follow the window's width.
+let bodyW = BODY_W;
 const MAX_NOTE = 2000, MAX_ANSWER = 4000; // what the mod saves (JournalStore.MaxNote, MaxAnswer)
 
 const STATUS = {
@@ -66,6 +68,10 @@ const C = {
     tabOn: { ...TAB, backgroundColor: BLUE },
     scroll: { height: BODY_H + "rem", width: (PANEL_W - 28) + "rem" },
     inner: { width: BODY_W + "rem", paddingBottom: "12rem" },
+    dockButton: { height: "26rem", lineHeight: "26rem", padding: "0 8rem", marginRight: "6rem", borderRadius: "4rem", fontSize: "13rem", backgroundColor: "rgba(255,255,255,0.12)" },
+    // A corner grip drawn with two borders (the game's font has no corner glyphs).
+    grip: { position: "absolute", bottom: "9rem", width: "14rem", height: "14rem", borderBottom: "2rem solid rgba(255,255,255,0.65)" },
+    dragLayer: { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", pointerEvents: "auto" },
     h1: { fontSize: "18rem", fontWeight: "bold", marginTop: "12rem", marginBottom: "2rem" },
     h2: { fontSize: "16rem", fontWeight: "bold", marginTop: "12rem", marginBottom: "2rem", color: "#cfe3ff" },
     h3: { fontSize: "15rem", fontWeight: "bold", marginTop: "10rem", color: "rgba(255,255,255,0.85)" },
@@ -297,7 +303,7 @@ function Picture(props) {
     const known = Array.isArray(size) && size[0] > 0 && size[1] > 0;
     if (!known || size[0] * size[1] > b.pixels) return h("div", { style: C.dim }, "(picture not shown: " + take(b, caption || file, 80) + ")");
     b.pixels -= size[0] * size[1];
-    const s = Math.min(BODY_W / size[0], BODY_W * PICTURE_TALL / size[1]);
+    const s = Math.min(bodyW / size[0], bodyW * PICTURE_TALL / size[1]);
     const w = Math.round(size[0] * s), hgt = Math.round(size[1] * s);
     const src = ctx.base + file;
     const text = take(b, caption, 200);
@@ -528,7 +534,7 @@ function WrapUpTab(props) {
         h(SessionSummary, { session: info.session }),
         DEBRIEF.map(([id, q]) => h("div", { key: id },
             h("div", { style: C.section }, q),
-            h("textarea", { value: str(ans[id]), maxLength: MAX_ANSWER, style: C.textarea,
+            h("textarea", { value: str(ans[id]), maxLength: MAX_ANSWER, style: { ...C.textarea, width: (bodyW - 20) + "rem" },
                 onChange: (e) => { setAns({ ...ans, [id]: e.target.value.slice(0, MAX_ANSWER) }); setDirty(true); },
                 onBlur: () => { if (dirty) save(); } }))),
         h("div", { style: { ...C.row, marginTop: "10rem" } },
@@ -774,6 +780,79 @@ function tabPage(tab, s) {
     return h(CityTab, { j, ctx, info });
 }
 
+// ---------- the window: docked (its usual place) or floating, moved and resized by the Mayor ----------
+// Sizes are in rem: the game's UI is 1920 x 1080 rem on a 16:9 screen; taller screens (the iPad's 4:3) scale by width
+// and wider ones by height. A floating window is remembered per screen shape and always kept on screen, clear of the
+// game's buttons at the top left and its toolbar at the bottom. Dragging uses a full-screen layer while the mouse is down,
+// because Gameface fires no pointer capture or native drag events.
+const WIN = { minW: 420, maxW: 1400, minBodyH: 220, top: 64, bottom: 110, header: 120, dockRight: 12, dockTop: 110, edge: 10, still: 3 };
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const fin = (v, d) => (typeof v === "number" && isFinite(v) ? v : d);
+
+/** The screen in px and rem, and how many px one rem is. */
+function screenSize() {
+    const w = fin(window.innerWidth, 1920) || 1920, h = fin(window.innerHeight, 1080) || 1080;
+    const k = Math.min(w / 1920, h / 1080) || 1;
+    return { px: [w, h], w: w / k, h: h / k, k };
+}
+
+/** The key a layout is remembered under: the screen's shape, "1.78" (16:9) or "1.33" (4:3). */
+const screenKey = (scr) => (scr.px[0] / scr.px[1]).toFixed(2);
+
+/** A layout that fits the screen. Docked keeps the usual place and size; floating stays on screen. */
+function fitLayout(l, scr) {
+    const o = obj(l) || {};
+    const w = clamp(fin(o.w, PANEL_W), WIN.minW, Math.max(WIN.minW, Math.min(WIN.maxW, scr.w)));
+    const roomH = scr.h - WIN.top - WIN.bottom - WIN.header;
+    const bodyH = clamp(fin(o.bodyH, BODY_H), WIN.minBodyH, Math.max(WIN.minBodyH, roomH));
+    const x = clamp(fin(o.x, scr.w - w - WIN.dockRight), 0, Math.max(0, scr.w - w));
+    const y = clamp(fin(o.y, WIN.dockTop), WIN.top, Math.max(WIN.top, scr.h - WIN.bottom - WIN.header - bodyH));
+    return { mode: o.mode === "floating" ? "floating" : "docked", x, y, w, bodyH };
+}
+
+/** The layout after dragging the title ("move") or an edge or corner ("l", "r", "b", "bl", "br") by dx, dy rem. */
+function dragged(start, kind, dx, dy, scr) {
+    let { x, y, w, bodyH } = start;
+    if (kind === "move") {
+        x += dx;
+        y += dy;
+    }
+    // Resizing stops at the screen's edge and the bottom toolbar; only moving shifts the window.
+    if (kind.includes("r")) w = Math.min(w + dx, scr.w - x);
+    if (kind.includes("l")) {
+        w = clamp(start.w - dx, WIN.minW, Math.min(WIN.maxW, start.x + start.w));
+        x = start.x + start.w - w;   // the right edge stays where it was
+    }
+    if (kind.includes("b")) bodyH = Math.min(bodyH + dy, scr.h - WIN.bottom - WIN.header - y);
+    return fitLayout({ mode: "floating", x, y, w, bodyH }, scr);
+}
+
+/** The panel's own style for a layout. */
+function panelStyle(lay) {
+    if (lay.mode !== "floating") return { ...C.panel, width: PANEL_W + "rem" };
+    const s = { ...C.panel, left: lay.x + "rem", top: lay.y + "rem", width: lay.w + "rem" };
+    delete s.right;
+    return s;
+}
+
+/** The edges and corners a floating window is resized from, with a grip in the bottom corners. */
+function ResizeHandles(props) {
+    const start = props.onStart;
+    const e = WIN.edge;
+    const grip = (kind) => h("div", { style: { ...C.grip, ...(kind === "br"
+        ? { right: "9rem", borderRight: "2rem solid rgba(255,255,255,0.65)" }
+        : { left: "9rem", borderLeft: "2rem solid rgba(255,255,255,0.65)" }) } });
+    const handle = (kind, style, corner) => h("div", { key: kind, style: { position: "absolute", ...style },
+        onMouseDown: (ev) => start(kind, ev) }, corner ? grip(kind) : null);
+    return [
+        handle("l", { left: -e / 2 + "rem", top: "30rem", bottom: "20rem", width: e + "rem" }),
+        handle("r", { right: -e / 2 + "rem", top: "30rem", bottom: "20rem", width: e + "rem" }),
+        handle("b", { left: "20rem", right: "20rem", bottom: -e / 2 + "rem", height: e + "rem" }),
+        handle("bl", { left: -e / 2 + "rem", bottom: -e / 2 + "rem", width: "22rem", height: "22rem" }, true),
+        handle("br", { right: -e / 2 + "rem", bottom: -e / 2 + "rem", width: "22rem", height: "22rem" }, true),
+    ];
+}
+
 // The panel stays mounted while closed (it keeps its tab and open project) and draws nothing then; the tab's contents
 // unmount, so the Wrap-up tab saves unsaved answers when the panel closes.
 function Panel() {
@@ -786,35 +865,76 @@ function Panel() {
     const [projectId, setProjectId] = React.useState(null);
     const [image, setImage] = React.useState(null);
     const [choosing, setChoosing] = React.useState(false);
+    const [saved, setSaved] = React.useState(null);   // the Mayor's layouts as just changed, until the mod's copy catches up
+    const [drag, setDrag] = React.useState(null);     // { kind, x0, y0, start, now } while the mouse is down
 
     // Opening the panel counts as reading the manager's latest update.
     const updated = j ? str(j.updated) : "";
     React.useEffect(() => { if (open && updated && mayor.seen !== updated) trigger("markSeen", updated); }, [open, updated, mayor.seen]);
     if (!open) return null;
 
+    // Where the window is: remembered per screen shape, always fitted to the screen as it is now.
+    const scr = screenSize();
+    const key = screenKey(scr);
+    const layouts = obj(saved) || obj(info.layout) || {};
+    const lay = drag ? drag.now : fitLayout(own(layouts, key), scr);
+    const size = lay.mode === "floating" ? lay : { w: PANEL_W, bodyH: BODY_H };   // docked: the usual size, whatever was saved
+    bodyW = size.w - 42;
+    const remember = (next) => {
+        const all = { ...layouts, [key]: next };
+        setSaved(all);
+        trigger("saveLayout", JSON.stringify(all));
+    };
+    const startDrag = (kind, ev) => {
+        if (lay.mode !== "floating" || (ev && ev.button > 0)) return;
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        setDrag({ kind, x0: fin(ev && ev.screenX, 0), y0: fin(ev && ev.screenY, 0), start: lay, now: lay });
+    };
+    const moveDrag = (ev) => {
+        if (!drag) return;
+        const dx = (fin(ev.screenX, drag.x0) - drag.x0) / scr.k, dy = (fin(ev.screenY, drag.y0) - drag.y0) / scr.k;
+        setDrag({ ...drag, now: dragged(drag.start, drag.kind, dx, dy, scr) });
+    };
+    const endDrag = () => {
+        if (!drag) return;
+        const moved = Math.abs(drag.now.x - drag.start.x) + Math.abs(drag.now.y - drag.start.y) + Math.abs(drag.now.w - drag.start.w) + Math.abs(drag.now.bodyH - drag.start.bodyH);
+        if (moved >= WIN.still) remember(drag.now);
+        setDrag(null);
+    };
+    const toggleDock = () => remember({ ...lay, mode: lay.mode === "floating" ? "docked" : "floating" });
+    const style = panelStyle(lay);
+
     const hb = budget();
     const header = h("div", { style: C.header },
         h("div", { style: C.titleBox },
-            h("div", { style: C.title }, "City Manager" + (j && j.city ? " · " + take(hb, j.city, 80) : info.city ? " · " + take(hb, info.city, 80) : "")),
+            h("div", { style: lay.mode === "floating" ? { ...C.title, cursor: "move" } : C.title, onMouseDown: (ev) => startDrag("move", ev) },
+                "City Manager" + (j && j.city ? " · " + take(hb, j.city, 80) : info.city ? " · " + take(hb, info.city, 80) : "")),
             h("div", { style: C.sub }, j ? `From ${take(hb, j.manager, 80) || "the City Manager"} · updated ${when(take(hb, j.updated, 40)) || str(info.fileTime) || "?"}` : ""),
             j ? h("div", { style: { ...C.sub, ...C.link }, onClick: () => setChoosing(!choosing) }, choosing ? "‹ Back to the journal" : "Change journal") : null),
+        h("div", { style: C.dockButton, onClick: toggleDock }, lay.mode === "floating" ? "Dock" : "Float"),
         h("div", { style: C.close, onClick: () => trigger("close") }, "×"));
     const warnings = [info.error, info.mayorProblem].filter((x) => x).map((x, i) => h("div", { key: "w" + i, style: C.warn }, take(hb, x, 400)));
 
-    if (!j || choosing) return h("div", { style: C.panel }, header, warnings, h(Chooser, { info, onDone: j ? () => setChoosing(false) : null }));
+    const handles = lay.mode === "floating" ? h(ResizeHandles, { onStart: startDrag }) : null;
+    const dragLayer = drag ? h("div", { style: C.dragLayer, onMouseMove: moveDrag, onMouseUp: endDrag, onMouseLeave: endDrag }) : null;
+    const frame = (...children) => h("div", { style: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" } },
+        h("div", { style }, ...children, handles), dragLayer);
+    if (!j || choosing) return frame(header, warnings, h(Chooser, { info, onDone: j ? () => setChoosing(false) : null }));
 
     const ctx = { base: str(info.host) + encodeURIComponent(str(info.folder)) + "/images/", sizes: obj(info.pictures) || {}, zoom: setImage };
     const openProject = (id) => { setTab(1); setProjectId(id); };
     const counts = ["", objs(j.projects).length, objs(mayor.notes, Infinity).length, "", ""].map((n) => (n ? ` (${n})` : ""));
     const Scroll = ui.Scrollable || "div";
     return h("div", { style: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" } },
-        h("div", { style: C.panel },
+        h("div", { style },
             header,
             warnings,
             h("div", { style: C.tabs }, TABS.map((t, i) => h("div", { key: t, style: { ...(tab === i ? C.tabOn : C.tab), ...(i === TABS.length - 1 ? { marginRight: 0 } : null) },
                 onClick: () => { setTab(i); if (i === 1) setProjectId(null); } }, t + counts[i]))),
-            h(Scroll, { vertical: true, trackVisibility: "scrollable", style: C.scroll, key: tab + ":" + (projectId || "") },
-                h("div", { style: C.inner }, tabPage(tab, { j, mayor, info, ctx, projectId, setProjectId, openProject })))),
+            h(Scroll, { vertical: true, trackVisibility: "scrollable", style: { height: size.bodyH + "rem", width: (size.w - 28) + "rem" }, key: tab + ":" + (projectId || "") },
+                h("div", { style: { ...C.inner, width: bodyW + "rem" } }, tabPage(tab, { j, mayor, info, ctx, projectId, setProjectId, openProject }))),
+            handles),
+        dragLayer,
         h(Viewer, { image, onClose: () => setImage(null) }));
 }
 
@@ -840,5 +960,6 @@ const register = (moduleRegistry) => {
 const hasCSS = false;
 // For the offline tests (tests/ui.test.mjs); the game only uses the default export.
 const __test = { markup, take, budget, Markdown, Table, Picture, stepDone, projectStatus, newer, parse, arr, objs, own, when, wrapUpId, tabPage,
-    TodayTab, ProjectList, ProjectDetail, NotesTab, WrapUpTab, CityTab, SnapshotRow, SessionSummary, sessionLines, digits, ReportsTab, LIMIT, PICTURE_NAME, Guard, Chooser };
+    TodayTab, ProjectList, ProjectDetail, NotesTab, WrapUpTab, CityTab, SnapshotRow, SessionSummary, sessionLines, digits, ReportsTab,
+    WIN, fitLayout, dragged, panelStyle, screenKey, ResizeHandles, Panel, LIMIT, PICTURE_NAME, Guard, Chooser };
 export { hasCSS, __test, register as default };

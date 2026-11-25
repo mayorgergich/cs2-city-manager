@@ -28,8 +28,8 @@ hobby project.
 If you know your way around C#, CS2 modding or Python, I'd genuinely welcome a review: open an issue, or come and say hi
 on the Discord.
 
-This is a personal tool I made for my own games, and I'm sharing it in case it's useful to someone else. I'll fix what I
-can, but I can't promise support or regular updates.
+This is a tool I made for my own games and keep improving as I play. I'm sharing it in case it's useful to someone
+else too.
 
 ## Features
 
@@ -45,6 +45,7 @@ can, but I can't promise support or regular updates.
       roads with their street names, lanes and traffic; buildings and how full each service is; the budget, demand,
       people and jobs; problems on the map; transit lines; and every road piece you can place right now
 - [x] "Since you loaded the city" in the Wrap-up: the roads you built, the buildings that grew, people and money
+- [x] A window you can dock, or float, move and resize; it remembers where you left it
 - [x] Works on its own as a notebook, without Claude
 
 **Between sessions (the plugin, with Claude Code)**
@@ -56,7 +57,6 @@ can, but I can't promise support or regular updates.
 - [x] Nothing drops off the list: open tasks carry over, stale ones get asked about, and projects keep their history
 
 **Coming next**
-- [ ] A floating window you can move and resize
 - [ ] One-step install for the plugin, and first-run setup for a new city
 - [ ] Reports straight from the snapshot: your numbers against last session, a fresh map, and steps checked in the city
 - [ ] *Show in planner*: open a project's plan in City Planning Draft with one click

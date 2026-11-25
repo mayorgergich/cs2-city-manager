@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 DIST = ROOT / "dist/CityManager"
 CSPROJ = ROOT / "mod/src/CityManager/CityManager.csproj"
 PANEL = ROOT / "mod/ui/CityManager.mjs"
