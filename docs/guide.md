@@ -28,15 +28,17 @@ plans.
 1. **The mod.** Subscribe to [City Manager on Paradox Mods](https://mods.paradoxplaza.com/mods/169373/Windows) in the Paradox Launcher. City Planning Draft comes
    with it; make sure both are on in the playset you play with. Add mods in the launcher, never from inside the game.
    (To build it yourself instead: [DEVELOPING.md](DEVELOPING.md).)
-2. **The plugin.** In Claude Code, type:
+2. **The plugin.**
+   - **In the Claude desktop app** (Code tab): open the plugins menu (**+** next to the prompt box), then **Add** →
+   **Add marketplace** → **Add from a repository**, paste the full address `https://github.com/mayorgergich/cs2-city-manager`, press **Sync**, and
+   install **city-manager**.
+   - **In Claude Code in a terminal:** type `/plugin install city-manager --marketplace mayorgergich/cs2-city-manager`
+     (Claude Code 2.1.275 or later; on older versions, `/plugin marketplace add mayorgergich/cs2-city-manager`, then
+     `/plugin install city-manager@cs2-city-manager`).
 
-   ```
-   /plugin install city-manager --marketplace mayorgergich/cs2-city-manager
-   ```
-
-   On Claude Code older than 2.1.275, use two lines: `/plugin marketplace add mayorgergich/cs2-city-manager`, then
-   `/plugin install city-manager@cs2-city-manager`. When it asks where to install, choose **for you (user scope)**:
-   then the plugin works whichever folder you open Claude Code in.
+   If it asks where to install, choose **for you** (your user account): then the plugin works whichever folder you
+   open Claude Code in. Updates don't come by themselves: in a terminal, `/plugin update city-manager@cs2-city-manager`; in
+   the desktop app, from the plugins menu (not tried yet: if you find how, tell us on Discord).
 3. **uv,** if the setup check asks for it: on Windows `winget install astral-sh.uv`, elsewhere the one-line install on
    [docs.astral.sh/uv](https://docs.astral.sh/uv/).
 

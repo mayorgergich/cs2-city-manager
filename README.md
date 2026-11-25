@@ -118,15 +118,15 @@ write a journal by hand ([format/README.md](format/README.md)).
    [docs/DEVELOPING.md](docs/DEVELOPING.md).
 2. **uv,** which runs the plugin's scripts. On Windows: `winget install astral-sh.uv`. Elsewhere: the one-line install on
    [docs.astral.sh/uv](https://docs.astral.sh/uv/).
-3. **The plugin.** In Claude Code (the Claude desktop app's Code tab, or a terminal), type:
+3. **The plugin.**
+   - **In the Claude desktop app** (Code tab): open the plugins menu (**+** next to the prompt box), then **Add** →
+   **Add marketplace** → **Add from a repository**, paste the full address `https://github.com/mayorgergich/cs2-city-manager`, press **Sync**, and
+   install **city-manager**.
+   - **In Claude Code in a terminal:** type `/plugin install city-manager --marketplace mayorgergich/cs2-city-manager`
+     (Claude Code 2.1.275 or later; on older versions, `/plugin marketplace add mayorgergich/cs2-city-manager`, then
+     `/plugin install city-manager@cs2-city-manager`).
 
-   ```
-   /plugin install city-manager --marketplace mayorgergich/cs2-city-manager
-   ```
-
-   That needs Claude Code 2.1.275 or later. On older versions, use two lines instead:
-   `/plugin marketplace add mayorgergich/cs2-city-manager`, then `/plugin install city-manager@cs2-city-manager`.
-   When it asks where to install, choose **for you (user scope)**, so it works in any folder.
+   If it asks where to install, choose **for you** (your user account), so it works in any folder.
 4. **Your city.** Open Claude Code in the same folder each time (it remembers what you've allowed per folder; your
    City Manager folder is a good one, see the [guide](docs/guide.md#talking-to-the-city-manager)), then type:
    - starting a new city, before you press New Game: `/city-manager:city-manager found a new city`;
