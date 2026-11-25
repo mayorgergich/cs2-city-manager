@@ -16,12 +16,14 @@ usage:
                                         folder), up to six maps; needs Pillow (uv run fetches it)
   founding.py playset                   the launcher's active playset: City Manager, City Planning Draft, the map mods
                                         in it, and every enabled mod by name (--all lists them)
-  founding.py check <city source>       checks manager/founding.md, the founding interview's answers (keys below)
-  founding.py newgame <city source>     the New Game screen, step by step, filled in from manager/founding.md
+  founding.py check <city source>       checks the city's charter (manager/charter.md, or founding.md in a city founded
+                                        before the intake), the intake's answers (keys below)
+  founding.py newgame <city source>     the New Game screen, step by step, filled in from the charter
 
 <city source> is the city's journal source folder (as `journal.py where` shows it) or the city's folder.
 
-manager/founding.md: TOML front matter between +++ lines, then the Mayor's own words. Every key is optional:
+The charter (manager/charter.md): TOML front matter between +++ lines, then the Mayor's own words. Every key is optional:
+  intake     founding or takeover (the intake's mode); half_built: list, what the Mayor left half-built (takeover)
   wants      the parts the Mayor asked for: map, playset, identity, economy, backbone, drafts, transit, briefing
   city, map, map_kind (vanilla or custom), theme (European or North American), traffic (right or left),
   mode       the game mode: normal or easy
@@ -59,11 +61,11 @@ MAX_META = 1024 * 1024
 RESOURCES = ("fertile", "forest", "oil", "ore", "fish")
 CONNECTIONS = ("road", "train", "ship", "air", "electricity", "water")
 WANTS = {"map", "playset", "identity", "economy", "backbone", "drafts", "transit", "briefing"}
-KEYS = {"wants": list, "city": str, "map": str, "map_kind": str, "theme": str, "traffic": str, "mode": str, "options": list,
+KEYS = {"intake": str, "half_built": list, "wants": list, "city": str, "map": str, "map_kind": str, "theme": str, "traffic": str, "mode": str, "options": list,
         "identity": str, "economy": str, "density": str, "style": str, "pace": str, "transit": list,
         "must_haves": list, "avoid": list, "crossings": str, "detail": str, "expand": str, "road_pieces": list,
         "start_hint": str, "notes": (str, dict)}
-CHOICES = {"map_kind": {"vanilla", "custom"}, "theme": {"European", "North American"}, "traffic": {"right", "left"},
+CHOICES = {"intake": {"founding", "takeover"}, "map_kind": {"vanilla", "custom"}, "theme": {"European", "North American"}, "traffic": {"right", "left"},
            "mode": {"normal", "easy"}, "density": {"low", "mixed", "high"}, "style": {"grid", "organic", "mixed"},
            "pace": {"relaxed", "steady", "fast"}, "crossings": {"tunnels", "bridges", "mix"}, "detail": {"outline", "steps"},
            "expand": {"one", "several", "suggest"}}
@@ -249,7 +251,8 @@ def cmd_map(name):
         print(f"- From: {source}" + (f" (mod {pid})" if pid else "") + f"; file {path.name}")
         print(f"- Theme: {d['theme']}" + (f"; starting year {d['year']}" if d["year"] else ""))
         print(f"- Size: {d['area']:.0f} km², of which {d['buildable']:.0f} km² buildable ({d['share']:.0f}%)")
-        print(f"- Climate: {d['climate']}; fresh water: {d['water']}")
+        print(f"- Climate: {d['climate']}; fresh water: " + (d["water"] if d["water"] != "not listed" else
+              "not listed in the map's file (some custom maps leave it out; the Water view in game shows what's there)"))
         print(f"- Resources: {d['resources']}")
         print(f"- Outside connections: {d['connections']}")
         if pid:
@@ -465,8 +468,15 @@ def city_folder(src):
     return src.parent if (src / "journal.toml").exists() else src
 
 
+def charter_path(src):
+    """The city's charter: manager/charter.md (written by the intake, in either mode), or manager/founding.md (a city
+    founded before the intake, 25 Nov 2026). The first that exists; charter.md when neither does."""
+    manager = city_folder(src) / "manager"
+    return next((p for p in (manager / "charter.md", manager / "founding.md") if p.exists()), manager / "charter.md")
+
+
 def read_founding(src):
-    path = city_folder(src) / "manager/founding.md"
+    path = charter_path(src)
     if not path.exists():
         return path, None, ""
     text = path.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
@@ -495,14 +505,14 @@ def problems_in(meta):
 def cmd_check(src):
     path, meta, _ = read_founding(src)
     if meta is None:
-        print(f"No {path}: the founding interview writes it (references/founding.md).")
+        print(f"No {path}: the intake writes it (references/intake.md).")
         return 1
     probs = problems_in(meta)
     for p in probs:
-        print(f"founding.md: {p}")
+        print(f"{path.name}: {p}")
     if not probs:
         wants = meta.get("wants")
-        print(f"founding.md is fine. Parts asked for: {', '.join(wants) if wants else 'none listed (ask before planning)'}.")
+        print(f"{path.name} is fine. Parts asked for: {', '.join(wants) if wants else 'none listed (ask before planning)'}.")
     return 1 if probs else 0
 
 
@@ -527,10 +537,13 @@ def cmd_newgame(src):
     for o in meta.get("options") or []:
         steps.append(f"Switch on **{str(o).capitalize()}**.")
     steps += [
-        "Start. When the city has loaded, pause for a few seconds: City Manager takes its start snapshot by itself.",
-        f"Save from the menu whenever you like (**Save Game**, name it **{city}**), and play as long as you want.",
-        "Next time you check in with the City Manager, the first plan is drawn from that snapshot.",
+        "Start. Once the city has loaded, press **Ctrl+J** (your journal is waiting) and, on its **City** tab, press **Take a snapshot**: the City Manager reads your city from it.",
     ]
+    planned = bool({"backbone", "drafts"} & set(meta.get("wants") or []))
+    steps += ([f"Save (**Save Game**, name it **{city}**), go back to the main menu, and tell the City Manager the city stands: "
+               "the first plan and your drafts come next, drawn from that snapshot."] if planned else
+              [f"Save (**Save Game**, name it **{city}**) whenever you like, and play as long as you want: your first briefing "
+               "is on the journal's Today tab."])
     for i, s in enumerate(steps, 1):
         print(f"{i}. {s}")
     if meta.get("map") and meta.get("map_kind") == "custom":

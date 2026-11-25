@@ -101,7 +101,7 @@ class Survey(unittest.TestCase):
         s = dict(self.s, founding=facts)
         text = survey.report(s)
         self.assertIn("**From the map's own file** (Test Bay): also a **ship** link and an **air** link", text)
-        self.assertIn("**Where the Mayor wants to start** (founding.md): By the river mouth", text)
+        self.assertIn("**Where the Mayor wants to start** (the charter): By the river mouth", text)
         self.assertEqual(survey.founding_facts(self.snap_path if hasattr(self, "snap_path") else base / "nothing.json"), {})
         self.assertEqual(survey.founding_facts(base / "nowhere"), {}, "no founding.md: nothing, and no error")
 

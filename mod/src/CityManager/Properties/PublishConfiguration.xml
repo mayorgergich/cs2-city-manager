@@ -28,11 +28,10 @@ City Manager is an in-game journal for your city, kept by a City Manager: Claude
 ## How to use it
 
 1. Subscribe. City Planning Draft, the build overlay, comes with it.
-2. Install the plugin in the Claude desktop app's Code tab: **Plugins → Add → Add marketplace → Add from a repository**, paste https://github.com/mayorgergich/cs2-city-manager, press **Sync**, then install it.
-3. Type **/city-manager:city-manager set up my city**. Starting a new city? Type **/city-manager:city-manager found a new city** instead.
-4. Start the game, then type **/city-manager:city-manager prep me**. It writes the plan into your journal.
-5. Close Claude, load your city and press **Ctrl+J**: the plan is on the Today tab.
-6. When you're done, press *Done for today* and save. Then type **/city-manager:city-manager report**: it reviews what you built and writes the next plan.
+2. Install the plugin. In the Claude desktop app's Code tab: **Plugins → Add → Add marketplace → Add from a repository**, paste https://github.com/mayorgergich/cs2-city-manager, press **Sync**, then install it. In Claude Code in a terminal: **/plugin install city-manager --marketplace mayorgergich/cs2-city-manager**
+3. **Required first, in the game:** make a new city or load yours, press **Ctrl+J** and *Start a new journal for this city*, then press **Take a snapshot** on the journal's City tab. Save, and go back to the main menu. The City Manager reads your city from that snapshot: without a journal and a snapshot it has nothing to read.
+4. Type **/city-manager:city-manager**. Your City Manager asks whether you're continuing a city or starting a new one, and takes it from there: a new city gets a charter, its first roads and planner drafts; a city you have gets a tour, a plan for what's next, and your unfinished plans as projects.
+5. After that, the same command before and after each session: before, it writes tonight's plan (in the game: **Ctrl+J**, the Today tab); after you press *Done for today* and save, it reviews what you built and writes the next one. Claude stays closed while you play.
 
 Without Claude, it's still a notebook: press **Ctrl+J** in any city and start a journal.
 

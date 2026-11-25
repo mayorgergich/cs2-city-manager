@@ -6,9 +6,7 @@ rhythm of play after that. The [README](../README.md) says what City Manager is 
 - [What you need](#what-you-need)
 - [Setting it up](#setting-it-up)
 - [Talking to the City Manager](#talking-to-the-city-manager)
-- [Founding a new city](#founding-a-new-city)
-- [After the founding: starting the city in the game](#after-the-founding-starting-the-city-in-the-game)
-- [A city you already have](#a-city-you-already-have)
+- [Your first conversation](#your-first-conversation)
 - [Every session after that](#every-session-after-that)
 - [When something's off](#when-somethings-off)
 
@@ -42,7 +40,7 @@ plans.
 3. **uv,** if the setup check asks for it: on Windows `winget install astral-sh.uv`, elsewhere the one-line install on
    [docs.astral.sh/uv](https://docs.astral.sh/uv/).
 
-Then pick one: [found a new city](#founding-a-new-city), or [set up a city you already have](#a-city-you-already-have).
+Then [your first conversation](#your-first-conversation), the same for a new city and one you already have.
 
 ## Talking to the City Manager
 
@@ -52,108 +50,87 @@ folder is your City Manager folder, which the setup makes: `%LOCALAPPDATA%\CityM
 `~/.local/share/city-manager` on Linux. In the Claude desktop app, pick it with the folder button next to the prompt
 box; in a terminal, `cd` there and run `claude`.
 
-**How:** type **`/city-manager:city-manager`** followed by what you want. Plain words often work too, because Claude picks the City Manager
-from what you ask, but the command always reaches it.
+**How:** type **`/city-manager:city-manager`**. Your City Manager welcomes you and asks what's next: continuing work on a city
+(then: about to play, or just played?) or starting a new one. Words after the command are shortcuts that skip the
+question:
 
-| When | Type |
+| Shortcut | Does |
 |---|---|
-| Setting up a city you already have | `/city-manager:city-manager set up my city` |
-| Founding a new city | `/city-manager:city-manager found a new city` |
-| Before you load your city | `/city-manager:city-manager prep me` (add how long you've got, if you like) |
-| When you're done in the game | `/city-manager:city-manager report` |
-| Anything else | `/city-manager:city-manager` and your question: *where are we with Main Street?* |
+| `/city-manager:city-manager prep me` | Tonight's briefing (add how long you've got, if you like) |
+| `/city-manager:city-manager report` | The report on the session you just played, and the next briefing |
+| `/city-manager:city-manager` and a question | An answer: *where are we with Main Street?* |
 
-## Founding a new city
+Plain words often work too, because Claude picks the City Manager from what you ask, but the command always reaches it.
 
-**When:** before you press New Game. The game can be closed, or sitting at the main menu.
+## Your first conversation
 
-**How to start it:** in Claude Code, type `/city-manager:city-manager found a new city` (or say *"Let's found a new city"*). The City
-Manager takes it from there, like the opening of an old text adventure:
+One conversation sets City Manager up for a city, new or old. Your City Manager looks at what you've built and either
+**founds** the city properly or **takes it over**, and both end with projects and a first briefing in your journal
+(and planner drafts, if you want them).
 
-> *Welcome, Mayor, to the founding of your new city. I'll be your City Manager. First question… what's the name of
-> our city?*
+**1. In the game first: open the journal and take a snapshot.** This is required. The City Manager reads your city
+from a snapshot the mod takes; without a journal and a snapshot it has nothing to read.
+1. Make a new city (New Game, any map and settings), or load one you already have.
+2. Press **Ctrl+J** (or the cones button at the top left), then *Start a new journal for this city*.
+3. On the journal's **City** tab, press **Take a snapshot**. (The mod also takes one by itself a few seconds after the
+   journal starts, and on every save; pressing it makes sure.)
+4. Save, and go back to the main menu (or quit). Claude never runs while you play; the main menu isn't playing.
 
-Every part after the name is optional, every question takes your own words or a note, and the chat ends before the
-game starts: the City Manager never plays with you or asks you to come back mid-game.
+**2. Then in Claude Code,** type `/city-manager:city-manager`. It opens in character, like the start of an old text adventure, and
+asks one thing: *are we continuing work on a city, or starting a new one?*
+- **Starting a new one:** it asks the city's name, finds its journal, and founds it properly.
+- **Continuing:** it lists your cities with a City Manager journal. A city it hasn't met yet gets taken over; one it
+  knows goes straight to tonight's briefing or the report. No journal anywhere yet? It asks whether you're setting it
+  up in a city you already have, and walks you through starting one.
 
-```mermaid
-flowchart TD
-    A(["You ask to found a new city"]) --> B["The welcome, and the city's name"]
-    B --> C{"Does the setup check<br/>find a problem?"}
-    C -- Yes --> C1["The City Manager helps you fix it:<br/>uv, a missing mod, the game's folder"] --> C
-    C -- No --> D["What shall we prepare?<br/>Pick any, or none"]
-    D --> E{"The land?"}
-    E -- Yes --> E1["The game's map or a custom one,<br/>and what the land should give"]
-    E1 --> E2["Pictures of three or four maps.<br/>You pick one"]
-    E2 --> E3{"Is the map's mod or<br/>the overlay missing<br/>from your playset?"}
-    E3 -- Yes --> E4["Switch it on in the Paradox Launcher"] --> F
-    E3 -- No --> F
-    E -- No --> F
-    F["The New Game screen: theme,<br/>traffic side, game mode, options"]
-    F --> G{"The city's character?"}
-    G -- Yes --> G1["How it should feel · must-haves and nevers ·<br/>how it earns its living · how people get around"] --> H
-    G -- No --> H
-    H{"A road plan?"}
-    H -- Yes --> H1["Crossings · how detailed · how to grow.<br/>Where to start and your road mods,<br/>when they matter"] --> I
-    H -- No --> I
-    I{"Planner drafts?"}
-    I -- Yes --> I1["Checks City Planning Draft<br/>is on in your playset"] --> J
-    I -- No --> J
-    J["The charter is written, and a<br/>Founding day page waits in your journal"]
-    J --> K["Your New Game steps, then goodbye:<br/>the chat ends"]
-    K --> L(["Close Claude and start the game"])
-```
+Either way, it says what it sees (*"Napster is brand new: the highways are in, nothing else yet."*) and you agree the
+mode together:
 
-What each part gives you:
-
-| Part | You get | Skip it and… |
+| What it finds | Mode | What you get |
 |---|---|---|
-| **The land** | Three or four maps that fit what you want, with pictures and a line on each | You choose the map yourself; say which one so the plan fits it |
-| **The New Game screen** (always) | The exact settings to pick, in the screen's own words | — |
-| **The city's character** | A short charter: the city's feel, its must-haves and nevers, its economy and transport | The first plan stays general |
-| **A road plan** | At your next check-in: a survey of the map and the main roads and highways, in phases | No road plan |
-| **Planner drafts** | That plan drawn over your city in City Planning Draft | The plan stays in the chat and the journal (choosing drafts brings the road plan with it) |
+| Nothing built yet | **Founding** | A charter (what the city should feel like, how it lives and moves, must-haves and nevers), then the survey office maps the land and proposes the first roads, drawn as planner drafts if you like |
+| A city with people and roads | **Takeover** | A tour of what's there (the numbers, the problems by street, what looks unfinished), where it goes next, and your half-built plans turned into projects |
+| Either, if you'd rather | **Just the journal** | The notebook and the session rhythm, with a charter any time later |
 
-## After the founding: starting the city in the game
-
-Only the **city's name** links the journal to the city, so it must match exactly. Use the **same map and settings**
-too: the plan is made for them. The founding chat's last message lists every step; it goes like this:
+Every part is optional, and every question takes your own words or a note.
 
 ```mermaid
 flowchart TD
-    A(["Main menu: New Game"]) --> B["The same map, and the city's name<br/>exactly as in the chat"]
-    B --> C["Theme, Left-hand traffic,<br/>game mode and options<br/>as the steps say"]
-    C --> D["Start. When the city has loaded,<br/>pause for a few seconds"]
-    D --> E["City Manager takes the<br/>start snapshot by itself"]
-    E --> F{"Ctrl+J: is the<br/>Founding day page there?"}
-    F -- No --> F1["Check the name matches,<br/>or pick the journal from<br/>the panel's list"] --> F
-    F -- Yes --> G{"Play now?"}
-    G -- Yes --> G1["Play as long as you like.<br/>Leave notes for the City Manager<br/>on the Notes tab"] --> H
-    G -- No --> H
-    H["Answer the Wrap-up, press Done for today,<br/>then Save Game under the city's name"]
-    H --> I(["Next time: open Claude Code<br/>and type prep me"])
-    I --> J["The first plan, drawn from the snapshot:<br/>the road backbone, and a planner guide<br/>if you chose drafts"]
+    A(["/city-manager:city-manager"]) --> M{"Continuing a city,<br/>or starting a new one?"}
+    M -- "Starting a new one" --> N["Your city's name"]
+    M -- "Continuing" --> P{"Cities with a<br/>City Manager journal?"}
+    P -- "One it knows" --> S(["About to play or just played:<br/>the briefing or the report"])
+    P -- "A new one for it" --> D
+    P -- "None yet" --> Q["In game: Ctrl+J, start a journal,<br/>save, back to the main menu"]
+    Q --> D
+    N --> D["It finds the city's journal<br/>and reads its snapshot"]
+    D --> E{"What's been built?"}
+    E -- "Nothing yet" --> F["Founding mode:<br/>what shall we prepare?"]
+    E -- "People and roads" --> G["Takeover mode: a tour of<br/>the numbers, the problems,<br/>what looks unfinished"]
+    F --> F1["The city's character: how it feels,<br/>musts and nevers, how it lives and moves"]
+    F1 --> R{"A road plan?"}
+    G --> G1["Where it goes next:<br/>pick the parts you want"]
+    G1 --> G2["What did you leave half-built?"]
+    G2 --> R
+    R -- Yes --> R1["The survey office maps the land<br/>and proposes the roads"]
+    R1 --> R2{"Do you approve it?"}
+    R2 -- "Changes" --> R1
+    R2 -- Yes --> R3["Planner drafts, if you chose them"]
+    R3 --> H
+    R -- No --> R4["A first-hour list from your charter"]
+    R4 --> H
+    H["Projects and a first briefing<br/>in your journal"]
+    H --> I(["Close Claude, load the city,<br/>press Ctrl+J and build"])
 ```
 
-1. **New Game**, the map from the chat.
-2. **City name**: exactly as in the chat, same spelling and capitals.
-3. **Theme, traffic and options** as listed. Left-hand traffic matters most: the road plan's ramps depend on it.
-4. **Start**, and once the city has loaded, **pause for a few seconds**. City Manager takes a snapshot of the new map
-   by itself; that snapshot is what the first plan is drawn from.
-5. **Ctrl+J** (or the cones button at the top left): the **Founding day** page is on the Today tab.
-6. **Play, or don't.** Tonight can be just a look around. Anything you notice, like where you'd want the old town,
-   goes on the **Notes** tab.
-7. Before you quit: answer the **Wrap-up**, press **Done for today**, then **Save Game** under the city's name.
+**With planner drafts:** in game, open City Planning Draft and press **Import latest file**; build from the **Now**
+plans, which match the first briefing's steps.
 
-The next time you check in, the City Manager reads the snapshot and draws the first plan from your founding answers.
-With planner drafts, it also writes a guide: in game, open City Planning Draft and press **Import latest file**.
-
-## A city you already have
-
-Load the city once with the mod on, then type `/city-manager:city-manager set up my city`. It checks your setup, asks
-your city's name exactly as the game shows it, asks a few questions about how you like to play, and makes the journal.
-If you already started a journal in game (the panel's *Start a new journal for this city*), it keeps it, notes and
-all. Take a snapshot on the panel's **City** tab, and your first report starts from it.
+**No city made yet?** Choose *starting a new one* and say you haven't made it. The founding then starts before New
+Game: maps that fit what
+you want, with pictures, the New Game settings in the screen's own words, and your city's character. Then you make the
+city (the chat gives the exact steps: the name must match). Once it loads, press **Ctrl+J** (the journal is waiting
+under the name), press **Take a snapshot** on its **City** tab, save, go back to the main menu, and tell the chat. The road plan and the drafts follow, as above.
 
 ## Every session after that
 
@@ -167,11 +144,12 @@ all. Take a snapshot on the panel's **City** tab, and your first report starts f
 
 | What you see | What to do |
 |---|---|
-| The panel says no journal is linked | The city's name doesn't match the journal's. Pick the journal from the panel's list, or rename the city in game to the name from the chat |
+| The panel says no journal is linked | Press *Start a new journal for this city*, or pick yours from the panel's list. A journal made in the chat before the city existed waits under the exact name you gave |
 | The custom map isn't on the New Game screen | Its mod isn't on in the active playset: switch it on in the Paradox Launcher, then restart the game |
 | The setup check says uv or Pillow is missing | Install uv (above). If Python and Pillow are already installed, the check says the scripts can run without it |
 | The City tab shows no snapshot | Press **Take a snapshot** on the City tab. Done for today and every save take one too |
+| The City Manager says it can't read your city | It needs a journal and a snapshot: load the city, press **Ctrl+J** (*Start a new journal for this city* if there's none), **Take a snapshot** on the City tab, save, then ask again |
 | Claude talks about the wrong city | Name the city you mean, or ask it to make that city the active one |
-| A guide didn't appear in the planner | In City Planning Draft, press **Import latest file**. The planner must have been opened once in that city |
+| A guide didn't appear in the planner | In City Planning Draft, press **Import latest file**: it loads the newest guide for this city |
 
 Questions and bugs: the [Discord](https://discord.gg/Rtea83Gnb9) or a GitHub issue.

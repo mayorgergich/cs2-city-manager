@@ -208,6 +208,21 @@ class Founding(unittest.TestCase):
         self.assertIn("crossings = 'ferry'", out)
         self.assertIn("road_pieces should be a list", out)
 
+    def test_the_charter_is_read_first_and_founding_md_still_works(self):
+        self.founding('+++\nwants = ["map"]\n+++\n')
+        code, out = self.run_tool("check", self.city)
+        self.assertEqual(code, 0, out)
+        self.assertIn("founding.md is fine", out)                     # a city founded before the intake
+        (self.city / "manager/charter.md").write_text('+++\nintake = "takeover"\nhalf_built = ["the harbour road"]\nwants = ["backbone"]\n+++\n', encoding="utf-8")
+        code, out = self.run_tool("check", self.city)
+        self.assertEqual(code, 0, out)
+        self.assertIn("charter.md is fine. Parts asked for: backbone.", out)
+        (self.city / "manager/charter.md").write_text('+++\nintake = "merger"\nhalf_built = "the harbour road"\n+++\n', encoding="utf-8")
+        code, out = self.run_tool("check", self.city)
+        self.assertEqual(code, 1)
+        self.assertIn("intake = 'merger'", out)
+        self.assertIn("half_built should be a list", out)
+
     def test_newgame_fills_in_the_screen_from_the_answers(self):
         self.founding('+++\ncity = "Riverton"\nmap = "Green Valley"\nmap_kind = "custom"\ntheme = "European"\ntraffic = "left"\nmode = "normal"\noptions = ["unlimited money"]\n+++\n')
         code, out = self.run_tool("newgame", self.city / "journal")
@@ -218,8 +233,13 @@ class Founding(unittest.TestCase):
         self.assertIn("switch **Left-hand traffic** on", out)
         self.assertIn("Game mode: **Normal** (the default).", out)
         self.assertIn("Switch on **Unlimited money**.", out)
-        self.assertNotIn("tell Claude", out)                           # the chat ends before the game starts
-        self.assertIn("Next time you check in", out)
+        self.assertIn("**Take a snapshot**", out)                       # the snapshot step is spelled out
+        self.assertIn("play as long as you want", out)                  # no road plan asked for: play after founding
+        self.founding('+++\ncity = "Riverton"\nmap = "Plains"\nwants = ["backbone", "drafts"]\n+++\n')
+        _, planned = self.run_tool("newgame", self.city / "journal")
+        self.assertIn("go back to the main menu, and tell the City Manager the city stands", planned)
+        self.founding('+++\ncity = "Riverton"\nmap = "Green Valley"\nmap_kind = "custom"\n+++\n')
+        code, out = self.run_tool("newgame", self.city / "journal")
         self.assertIn("custom maps show only when their mod is on", out)
         self.assertIn("# Green Valley", out)                           # the custom map's detail follows
         self.assertIn("Save Game", out)

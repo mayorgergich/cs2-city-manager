@@ -17,6 +17,8 @@ usage:
   city.py services <src>                service budgets, and each service building: how full, how efficient
   city.py catalogue <src>               the road, track and junction pieces the Mayor can place now, by menu, with
                                         lanes and cost; and what the next milestone unlocks
+  city.py stage <src> [--json]          new, just begun or established: what the Mayor has built so far, so the
+                                        intake knows whether to found the city or take it over
 
 <src> is a journal source folder (its journal.toml names the journal), a journal folder in the game's ModsData, or a
 city.json file. Run it like journal.py: `uv run city.py ...` or `python3 -I city.py ...`. It only reads.
@@ -511,6 +513,61 @@ def cmd_street(src, name):
     return 0
 
 
+STAGE_BEGUN = {"people": 200, "roadKm": 5.0, "buildings": 50}   # below all three: a city just begun
+
+
+def stage(snap):
+    """How far the Mayor has got: "new" (nothing built: no people, no roads of their own, no buildings), "begun" (a
+    start, under STAGE_BEGUN on every count) or "established". The map's own highways and railways don't count."""
+    c = obj(snap.get("city"))
+    length = Counter()
+    for e in arr(snap.get("edges")):
+        if isinstance(e, dict) and not e.get("owned"):
+            length[e.get("kind")] += e.get("length", 0) or 0
+    buildings = Counter(x.get("kind") for x in arr(snap.get("buildings")) if isinstance(x, dict))
+    facts = {
+        "city": c.get("name") or "?",
+        "people": int(c.get("population") or 0),
+        "roadKm": round(length.get("road", 0) / 1000, 1),
+        "highwayKm": round(length.get("highway", 0) / 1000, 1),
+        "railKm": round(sum(length.get(k, 0) for k in RAIL_KINDS) / 1000, 1),
+        "buildings": sum(v for k, v in buildings.items() if k != "other"),
+        "districts": len([d for d in arr(snap.get("districts")) if isinstance(d, dict)]),
+        "lines": len(arr(snap.get("transit"))),
+        "milestone": c.get("milestone"),
+        "date": obj(c.get("date")).get("text"),
+        "unlimitedMoney": bool(c.get("unlimitedMoney")),
+        "taken": snap.get("taken"),
+    }
+    if facts["people"] == 0 and facts["roadKm"] < 0.5 and facts["buildings"] == 0:
+        kind = "new"
+    elif facts["people"] < STAGE_BEGUN["people"] and facts["roadKm"] < STAGE_BEGUN["roadKm"] and facts["buildings"] < STAGE_BEGUN["buildings"]:
+        kind = "begun"
+    else:
+        kind = "established"
+    return kind, facts
+
+
+def cmd_stage(src, as_json=False):
+    kind, f = stage(load(snapshot_path(src)))
+    if as_json:
+        print(json.dumps({"stage": kind, **f}, ensure_ascii=False))
+        return 0
+    words = {"new": "a brand-new city: nothing built yet", "begun": "a city just begun",
+             "established": "an established city"}[kind]
+    print(f"# {f['city']}: {words}\n")
+    print(f"- People {f['people']:,}; roads of the Mayor's own {f['roadKm']} km; buildings {f['buildings']:,}; districts "
+          f"{f['districts']}; transit lines {f['lines']}.")
+    print(f"- In game {f['date'] or '?'}, milestone {f['milestone'] if f['milestone'] is not None else '?'}"
+          f"{', unlimited money' if f['unlimitedMoney'] else ''}; snapshot taken {local_time(f['taken'])}.")
+    if f["highwayKm"] or f["railKm"]:
+        print(f"- The map's own: highways {f['highwayKm']} km, railways {f['railKm']} km (not counted).")
+    print("\n" + {"new": "Founding mode fits: found it properly, then plan the first roads from the start snapshot.",
+                   "begun": "Founding mode still fits (what's there goes into the plan); take it over if the Mayor prefers.",
+                   "established": "Takeover mode fits: a tour of what's there, then a charter for where it goes next."}[kind])
+    return 0
+
+
 def main(argv):
     args = argv[1:]
     if len(args) >= 2 and args[0] == "summary":
@@ -522,6 +579,8 @@ def main(argv):
         return cmd_streets(args[1])
     if len(args) >= 3 and args[0] == "street":
         return cmd_street(args[1], " ".join(args[2:]))
+    if len(args) >= 2 and args[0] == "stage" and set(args[2:]) <= {"--json"}:
+        return cmd_stage(args[1], "--json" in args)
     if len(args) == 2 and args[0] in ("problems", "services", "catalogue"):
         return {"problems": cmd_problems, "services": cmd_services, "catalogue": cmd_catalogue}[args[0]](args[1])
     print(__doc__)

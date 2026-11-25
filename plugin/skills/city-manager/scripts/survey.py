@@ -367,7 +367,7 @@ def survey(snap, start=False):
         grid = "" if n == 9 else " (this map's tiles aren't a regular grid)"
         start_note = (f"Every tile is already owned (the game's option to unlock all map tiles), so the start is taken as "
                       f"{which} around {'the map' + chr(39) + 's own starter road' if roads else 'the middle of the map'}{grid}. "
-                      "That's only a stand-in: where the city starts is the Mayor's choice (founding.md's start_hint, or "
+                      "That's only a stand-in: where the city starts is the Mayor's choice (the charter's start_hint, or "
                       "ask; a custom map's own description often names its intended starts)." if all_owned else
                       "The snapshot lists no owned tiles; the start is taken as the middle of the map.")
     else:
@@ -679,16 +679,16 @@ def ground_words(g):
 
 
 def founding_facts(src):
-    """What the founding chat recorded beside the journal source (manager/founding.md), and the map's own file's
+    """What the intake recorded beside the journal source (the charter: manager/charter.md or founding.md), and the map's own file's
     connections, which the snapshot can't show (it holds road and rail links only): {"map", "startHint",
-    "mapConnections"}, or {} when there's no founding.md (a snapshot file, a journal folder in ModsData)."""
+    "mapConnections"}, or {} when there's no charter (a snapshot file, a journal folder in ModsData)."""
     p = Path(src).expanduser()
     if p.is_file():
         return {}
     try:
         import founding   # noqa: PLC0415  the founding chat's helper, beside this script
         _, meta, _ = founding.read_founding(p)
-    except Exception:     # a missing or broken founding.md never stops a survey
+    except Exception:     # a missing or broken charter never stops a survey
         return {}
     if not isinstance(meta, dict):
         return {}
@@ -724,7 +724,7 @@ def report(s, pictures=()):
     w(f"| Milestone | {s.get('milestone', '?')} (what it unlocks: `city.py catalogue`) |")
     w(f"| Map tiles | {tl['owned']} owned" + (f" of {s['map']['tiles']}" if tl["resourcesKnown"] else " (this snapshot doesn't list the others)") +
       (f", {tl['permitsLeft']} permits left" if tl.get("permitsLeft") is not None else "") + " |")
-    w("| Traffic side | not in the snapshot: take it from founding.md (`traffic`), or ask; it decides which side every ramp leaves |")
+    w("| Traffic side | not in the snapshot: take it from the charter (`traffic`), or ask; it decides which side every ramp leaves |")
     if st.get("note"):
         w(f"| Start | {st['note']} |")
     w("")
@@ -743,7 +743,7 @@ def report(s, pictures=()):
         w("- **Streets in and around it:** " + "; ".join(f"{x['name']} ({x['piece']}, {x['km']} km)" for x in st["streets"]) + ".")
     fd = s.get("founding") or {}
     if fd.get("startHint"):
-        w(f"- **Where the Mayor wants to start** (founding.md): {fd['startHint']}")
+        w(f"- **Where the Mayor wants to start** (the charter): {fd['startHint']}")
     res = [f"{RESOURCE_WORDS[k]} {v:.0f}% of the map's" for k, v in st["resources"].items() if v >= 0.5]
     if res:
         w("- **Resources under it:** " + "; ".join(res) + ". Say so if a district would sit on top of oil or ore.")

@@ -1,7 +1,7 @@
 # How the city makes its living: economy archetypes
 
 The founding chat asks the Mayor what kind of city they want and stores one of these ids as `economy` in
-`<city>/manager/founding.md`, or two joined with `+` when the Mayor wants both (`"industry+commerce"`: read both
+the city's charter (`<city>/manager/charter.md`, or `founding.md` in an older city), or two joined with `+` when the Mayor wants both (`"industry+commerce"`: read both
 sections and § Combining). The plan follows it: the zoning mix, where things go, and what the roads must carry. The id
 is a starting point, not a cage: the Mayor's own words in `notes.economy` win where they disagree with it, and with
 unlimited money (`options = ["unlimited money"]`) the money advice below matters little.

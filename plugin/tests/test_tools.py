@@ -625,12 +625,28 @@ class FirstRun(unittest.TestCase):
         j = json.loads((self.e.root / "little-harbour/journal.json").read_text(encoding="utf-8"))
         self.assertEqual(j["briefing"]["title"], "Founding day")
         self.assertIn("Little Harbour stands", j["briefing"]["summary"])
-        self.assertEqual([t["id"] for t in j["briefing"]["tasks"]], ["pause", "look", "window", "wrapup"])
+        self.assertEqual([t["id"] for t in j["briefing"]["tasks"]], ["pause", "save", "look", "window"])
         self.assertNotIn("Claude the city", json.dumps(j))                # nothing in it waits for Claude
         self.assertIn("starts a New Game named exactly 'Little Harbour'", out)
         code, out = self.jp("init", "--founding")
         self.assertEqual(code, 2)
         self.assertIn("needs the new city's name", out)
+
+    def test_cities_lists_the_ones_set_up_and_journals_started_in_game(self):
+        code, out = self.jp("cities")
+        self.assertIn("No city has a City Manager journal yet", out)
+        self.jp("init", "Riverton")
+        (self.e.root / "other-town").mkdir(parents=True)
+        (self.e.root / "other-town/journal.json").write_text('{"format": 1, "city": "Other Town"}', encoding="utf-8")
+        (self.e.root / "other-town/city-start.json").write_text("{}", encoding="utf-8")
+        code, out = self.jp("cities")
+        self.assertEqual(code, 0, out)
+        self.assertIn("- Riverton: set up (riverton, active); no snapshot yet", out)
+        self.assertIn("- Other Town: started in game, not set up yet; snapshot", out)
+        self.assertIn('journal.py init "Other Town" --active', out)
+        code, out = self.jp("cities", "--json")
+        rows = json.loads(out)
+        self.assertEqual([(r["name"], r["setUp"]) for r in rows], [("Riverton", True), ("Other Town", False)])
 
     def test_doctor_says_whether_uv_is_needed(self):
         code, out = self.jp("doctor")

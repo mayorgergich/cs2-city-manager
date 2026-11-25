@@ -234,5 +234,42 @@ class CityReader(unittest.TestCase):
         self.assertEqual(city.snapshot_path(src, start=True), city.ROOT / "riverton" / "city-start.json")
 
 
+class Stage(unittest.TestCase):
+    """city.py stage: whether the intake founds the city or takes it over."""
+
+    def snap(self, people=0, road_m=0, buildings=0, highway_m=14800):
+        edges = [{"kind": "highway", "length": highway_m}, {"kind": "train", "length": 9100}]
+        if road_m:
+            edges.append({"kind": "road", "length": road_m})
+        return {"format": 1, "city": {"name": "Riverton", "population": people, "milestone": 0, "date": {"text": "June 2026"}},
+                "edges": edges, "buildings": [{"kind": "residential"}] * buildings + [{"kind": "other"}] * 3,
+                "districts": [], "transit": []}
+
+    def test_a_city_with_nothing_built_is_new_and_the_maps_own_highways_dont_count(self):
+        kind, f = city.stage(self.snap())
+        self.assertEqual(kind, "new")
+        self.assertEqual((f["roadKm"], f["highwayKm"], f["railKm"], f["buildings"]), (0.0, 14.8, 9.1, 0))
+
+    def test_a_small_start_is_begun_and_a_real_city_is_established(self):
+        self.assertEqual(city.stage(self.snap(people=120, road_m=2400, buildings=30))[0], "begun")
+        self.assertEqual(city.stage(self.snap(people=3778, road_m=45200, buildings=1226))[0], "established")
+        self.assertEqual(city.stage(self.snap(people=0, road_m=8000))[0], "established", "a road network is a city in progress")
+
+    def test_stage_command_says_which_mode_fits(self):
+        base = Path(tempfile.mkdtemp(prefix="cm-stage-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(base, ignore_errors=True))
+        f = base / "city.json"
+        f.write_text(json.dumps(self.snap()), encoding="utf-8")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(city.main(["city.py", "stage", str(f)]), 0)
+        self.assertIn("a brand-new city", out.getvalue())
+        self.assertIn("Founding mode fits", out.getvalue())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            city.main(["city.py", "stage", str(f), "--json"])
+        self.assertEqual(json.loads(out.getvalue())["stage"], "new")
+
+
 if __name__ == "__main__":
     unittest.main()

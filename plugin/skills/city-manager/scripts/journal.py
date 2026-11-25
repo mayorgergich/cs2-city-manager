@@ -51,6 +51,8 @@ Commands:
                                --founding is for a city that doesn't exist yet (the founding chat): a "Founding day"
                                page instead of the welcome briefing, and the city becomes the active one.
   journal.py activate <city>   makes a city in cities.toml the active one (where, and the skill, start from it)
+  journal.py cities [--json]   every city with a City Manager journal: the ones set up here (with their snapshot) and
+                               journals started in game that aren't set up yet (init adopts them)
 
 Environment: CITY_MANAGER_ROOT (default <game user data>/ModsData/CityManager, or the older ModsData/CityJournal
 until the mod has run once since its rename), CS2_USERDATA (the game's user-data
@@ -839,24 +841,24 @@ summary = {summary}
 
 [[tasks]]
 id = "pause"
-text = "**Pause** for a few seconds: City Manager takes the start snapshot by itself"
+text = "On the **City** tab, press **Take a snapshot**: the City Manager reads your city from it"
+
+[[tasks]]
+id = "save"
+text = "**Save** under the city's name, then go back to the main menu and tell the City Manager the city stands"
 
 [[tasks]]
 id = "look"
-text = "Take a first look around: where would you like the city to start? A note on the **Notes** tab is plenty"
+text = "While you're here: where should the centre of town go? A note on the **Notes** tab is plenty"
 
 [[tasks]]
 id = "window"
 text = "Optional: press **Float** at the top of this window and put it where you like it"
-
-[[tasks]]
-id = "wrapup"
-text = "Before you close the game: answer the **Wrap-up**, press **Done for today**, then save under the city's name"
 +++
-## How we'll work
+## What happens next
 
-Play as long as you like tonight; Claude stays closed. The next time you check in, I read the city from its start
-snapshot and draw the first plan from what we agreed at the founding.
+Back at the main menu, tell the City Manager the city stands: it reads the start snapshot and draws the first plan
+from what we agreed (with planner drafts, if you asked for them). Then load the city and build from it.
 """
 
 DOSSIER = """# {name}: dossier
@@ -890,6 +892,57 @@ def set_active(text, jid):
     if re.search(r"(?m)^active\s*=", text):
         return re.sub(r"(?m)^active\s*=.*$", lambda _: line, text, count=1)
     return line + "\n" + text
+
+
+def snapshot_seen(jid):
+    """The newest snapshot in a journal's game folder: (file name, local time) or None."""
+    for name in ("city.json", "city-start.json"):
+        f = ROOT / jid / name
+        if f.exists():
+            return name, datetime.fromtimestamp(f.stat().st_mtime).strftime("%d %b %H:%M")
+    return None
+
+
+def city_rows():
+    """Every city with a City Manager journal, for the welcome menu: set up here first, then journals started in game."""
+    registry, cities = load_registry()
+    known = cities.get("cities") or {}
+    rows, used = [], set()
+    for key, c in known.items():
+        folder = Path(str((c or {}).get("dir", manager_home() / key))).expanduser()
+        jid = key
+        try:
+            jid = str(tomllib.loads((folder / "journal/journal.toml").read_text(encoding="utf-8-sig")).get("id") or key)
+        except (OSError, tomllib.TOMLDecodeError):
+            pass
+        used.update({key, jid})
+        rows.append({"key": key, "name": str((c or {}).get("name") or key), "setUp": True, "active": key == cities.get("active"),
+                     "journal": jid, "inGame": (ROOT / jid / "journal.json").exists(), "snapshot": snapshot_seen(jid)})
+    for jid, city in unclaimed_journals(cities):
+        if jid not in used:
+            rows.append({"key": None, "name": city or jid, "setUp": False, "active": False, "journal": jid, "inGame": True,
+                         "snapshot": snapshot_seen(jid)})
+    return rows
+
+
+def cmd_cities(as_json=False):
+    rows = city_rows()
+    if as_json:
+        print(json.dumps(rows, ensure_ascii=False))
+        return 0
+    if not rows:
+        print("No city has a City Manager journal yet. In game: load the city, press Ctrl+J, Start a new journal for this city, "
+              "then Take a snapshot on the journal's City tab, and save.")
+        return 0
+    print("# Cities with a City Manager journal\n")
+    for r in rows:
+        snap = f"snapshot {r['snapshot'][1]}" if r["snapshot"] else "no snapshot yet"
+        if r["setUp"]:
+            print(f"- {r['name']}: set up ({r['key']}{', active' if r['active'] else ''}); {snap}" +
+                  ("" if r["inGame"] else "; its journal isn't in the game's folder yet (journal.py build)"))
+        else:
+            print(f"- {r['name']}: started in game, not set up yet; {snap}. `journal.py init {json.dumps(r['name'], ensure_ascii=False)} --active` adopts it")
+    return 0
 
 
 def cmd_activate(key):
@@ -975,7 +1028,8 @@ def cmd_init(name=None, jid=None, folder=None, make_active=False, founding=False
     if adopted:
         print("  The journal you started in game is kept: your notes and wrap-ups stay (they're in mayor.json).")
     if founding:
-        print(f"\nNext: the Mayor starts a New Game named exactly {name!r}; the Founding day page shows on the Today tab (Ctrl+J).")
+        print(f"\nNext: the Mayor starts a New Game named exactly {name!r}, pauses, saves, and comes back from the main menu; "
+              "the Founding day page shows on the Today tab (Ctrl+J).")
     else:
         print("\nNext: load the city in the game and press Ctrl+J. The welcome briefing shows on the Today tab.")
     return code
@@ -1075,6 +1129,8 @@ def main(argv):
         return cmd_where(*args[1:])
     if args[:1] == ["doctor"] and len(args) == 1 and not flags:
         return cmd_doctor()
+    if args[:1] == ["cities"] and len(args) == 1 and flags <= {"--json"}:
+        return cmd_cities("--json" in flags)
     if args[:1] == ["activate"] and len(args) == 2 and not flags:
         return cmd_activate(args[1])
     if argv[1:2] == ["init"]:

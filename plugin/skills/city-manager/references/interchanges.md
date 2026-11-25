@@ -4,7 +4,7 @@ Where a street meets a highway or a railway, it goes over or under it, with ramp
 grade: at a flat junction the game puts traffic lights on the highway, and a road can't cross a railway at grade at all.
 These are designs for the Mayor to build; your job is to pick one, draw it in the plan and write its build card.
 
-Everything here is for **right-hand traffic**. For left-hand traffic (`traffic = "left"` in founding.md), mirror every
+Everything here is for **right-hand traffic**. For left-hand traffic (`traffic = "left"` in the charter), mirror every
 ramp: off-ramps leave on the left of each direction, and on-ramps join on the left.
 
 ## Choosing one

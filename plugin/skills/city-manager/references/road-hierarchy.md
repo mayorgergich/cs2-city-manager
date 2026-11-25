@@ -72,7 +72,7 @@ A road that narrows is a bottleneck if the traffic doesn't drop at the same plac
 - when the Mayor replaces a road with a custom one (a Road Builder road, say), keep the width the same, so the lots along
   it stay exact.
 
-## Density and style (from founding.md)
+## Density and style (from the charter)
 
 | | Arterials | Collectors | Locals | Blocks |
 |---|---|---|---|---|

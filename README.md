@@ -127,18 +127,24 @@ write a journal by hand ([format/README.md](format/README.md)).
      `/plugin install city-manager@cs2-city-manager`).
 
    If it asks where to install, choose **for you** (your user account), so it works in any folder.
-4. **Your city.** Open Claude Code in the same folder each time (it remembers what you've allowed per folder; your
-   City Manager folder is a good one, see the [guide](docs/guide.md#talking-to-the-city-manager)), then type:
-   - starting a new city, before you press New Game: `/city-manager:city-manager found a new city`;
-   - a city you already have (load it once with the mod on first): `/city-manager:city-manager set up my city`.
+4. **In the game first: open the journal and take a snapshot.** This is required before the City Manager can help:
+   it reads your city from a snapshot the mod takes, so without a journal and a snapshot it has nothing to read.
+   1. Make a new city or load one you have.
+   2. Press **Ctrl+J**, then *Start a new journal for this city*.
+   3. On the journal's **City** tab, press **Take a snapshot**.
+   4. Save, and go back to the main menu.
+5. **Then in Claude Code** (the same folder each time: it remembers what you've allowed per folder; see the
+   [guide](docs/guide.md#talking-to-the-city-manager)), type `/city-manager:city-manager`. Your City Manager welcomes you and asks: are we
+   continuing work on a city, or starting a new one? A new city gets **founded** properly (a charter, then the first
+   road plan and planner drafts); a city you already have gets **taken over** (a tour of what's there, where it goes
+   next, your half-built plans as projects). Both end with projects and a first briefing in your journal. Not made the
+   city yet? Say so, and it helps you choose a map first.
 
-   It checks your setup (the mods, the game's folder, uv), asks a few questions, and makes your city's journal. Press
-   Ctrl+J in the game and its first page is there.
+The [guide](docs/guide.md) walks through all of it, with a flowchart.
 
-The [guide](docs/guide.md) walks through all of it, founding a new city included.
-
-From then on: `/city-manager:city-manager prep me` before you load your city, and `/city-manager:city-manager report` when you're done (see "How"
-above). Plain words work too; the command always reaches the City Manager.
+From then on, the same command before and after every session: it asks whether you're about to play or just
+played, and writes tonight's briefing or the report (see "How" above). Words after it are shortcuts: `/city-manager:city-manager prep me`,
+`/city-manager:city-manager report`.
 
 ## Current progress
 
