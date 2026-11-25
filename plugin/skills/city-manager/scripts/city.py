@@ -72,11 +72,16 @@ def journal_dir(src):
 
 
 def snapshot_path(src, start=False):
+    """The snapshot to read: a file as given; for a folder city.json, or city-start.json while there's no city.json yet
+    (starting a journal takes the start snapshot at once, so a journal just started has only that)."""
     src = Path(src).expanduser()
     if src.is_file():
         return src
     d = journal_dir(src)
-    return d / ("city-start.json" if start else "city.json")
+    if start:
+        return d / "city-start.json"
+    main, first = d / "city.json", d / "city-start.json"
+    return main if main.exists() or not first.exists() else first
 
 
 def load(path):

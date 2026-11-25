@@ -235,6 +235,16 @@ class CityReader(unittest.TestCase):
             city.load(odd)
         self.assertIn("format 2", out.getvalue())
 
+    def test_a_journal_just_started_has_only_the_start_snapshot(self):
+        (self.dir / "city.json").unlink()
+        code, out = run("summary", self.dir)
+        self.assertEqual(code, 0, out)
+        self.assertIn("on loading the city", out)
+        code, out = run("stage", self.dir)
+        self.assertEqual(code, 0, out)
+        code, out = run("numbers", self.dir)
+        self.assertIn("**Nothing new:**", out)
+
     def test_a_journal_source_finds_its_snapshot(self):
         src = self.dir / "src"
         src.mkdir()

@@ -603,7 +603,8 @@ namespace CityManager
                     if ((placeable.m_PlacementFlags & (Game.Net.PlacementFlags.IsUpgrade | Game.Net.PlacementFlags.UpgradeOnly)) != 0)
                     {
                         // Upgrades are left out (trees, grass, lighting), but a junction's own pieces stay: the
-                        // roundabouts, and the traffic lights and stop signs, by the names the road menu shows.
+                        // traffic lights and stop signs, by the names the road menu shows (and a roundabout made as an
+                        // upgrade; the game's own roundabouts are objects, read below).
                         var set = placeable.m_SetUpgradeFlags.m_General;
                         if ((set & CompositionFlags.General.Roundabout) != 0)
                             items.Add(CatalogueItem(e, "roundabout", achieved));
@@ -628,6 +629,14 @@ namespace CityManager
                     var item = CatalogueItem(e, "junction", achieved);
                     item["upkeep"] = _em.GetComponentData<AssetStampData>(e).m_UpKeepCost;
                     items.Add(item);
+                }
+            }
+            using (var objects = _q.NetObjects.ToEntityArray(Allocator.Temp))
+            {
+                foreach (var e in objects)
+                {
+                    var flags = _em.GetComponentData<NetObjectData>(e).m_CompositionFlags.m_General;
+                    if ((flags & CompositionFlags.General.Roundabout) != 0) items.Add(CatalogueItem(e, "roundabout", achieved));
                 }
             }
             Snap.Section("catalogue", new JObject { ["milestone"] = achieved, ["items"] = items });

@@ -54,10 +54,17 @@ Discord: https://discord.gg/Rtea83Gnb9
 	<Screenshot Value="Properties/Screenshots/3-project.png" />
 	<Screenshot Value="Properties/Screenshots/4-notes.png" />
 	<Tag Value="Code Mod" />
-	<ModVersion Value="0.8.0" />
+	<ModVersion Value="0.9.0" />
 	<GameVersion Value="1.6.*" />
 	<Dependency Id="155935" DisplayName="City Planning Draft" />
 	<ChangeLog>
+0.9.0
+- The city snapshot now records the map: its name and theme, the traffic side, the game mode, the New Game options, and every link off the map (road, rail, air, ship, power and water), so the City Manager doesn't have to ask.
+- The build list the City Manager plans from now has the road menu's roundabouts and traffic-light pieces, and names Road Builder roads.
+- A step can carry its own build card: Picture and Show on map buttons under the step.
+- The panel's text follows the game's text size setting (Options, Interface).
+
+0.8.0
 First public beta: the journal panel (Today, Projects, Notes, Wrap-up, City), the city snapshot for the City Manager, and a floating, resizable window.
 </ChangeLog>
 	<!-- Cities: Skylines II has no AI-disclosure tags on Paradox Mods yet (its public game data lists none, 25 Nov 2026),

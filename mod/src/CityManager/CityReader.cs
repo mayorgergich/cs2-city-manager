@@ -50,7 +50,7 @@ namespace CityManager
         public sealed class Queries
         {
             public EntityQuery Edges, Buildings, Districts, Tiles, Icons, Services, HappinessParams, FeeParams,
-                Lines, ZonePrefabs, Blocks, Placeable, Stamps, AllTiles, Outside;
+                Lines, ZonePrefabs, Blocks, Placeable, Stamps, NetObjects, AllTiles, Outside;
 
             public static Queries Make(Func<EntityQueryDesc, EntityQuery> make)
             {
@@ -107,6 +107,12 @@ namespace CityManager
                     Stamps = make(new EntityQueryDesc
                     {
                         All = new[] { ComponentType.ReadOnly<PrefabData>(), ComponentType.ReadOnly<AssetStampData>(), ComponentType.ReadOnly<UIObjectData>() },
+                    }),
+                    // Objects placed on a road or a junction from the road menu (the roundabouts are these: an object
+                    // whose NetObjectData sets the Roundabout composition flag on the node it sits on).
+                    NetObjects = make(new EntityQueryDesc
+                    {
+                        All = new[] { ComponentType.ReadOnly<PrefabData>(), ComponentType.ReadOnly<NetObjectData>(), ComponentType.ReadOnly<UIObjectData>() },
                     }),
                     AllTiles = make(new EntityQueryDesc
                     {
