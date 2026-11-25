@@ -113,9 +113,9 @@ write a journal by hand ([format/README.md](format/README.md)).
 
 ## Getting started
 
-1. **The mod.** City Manager isn't on Paradox Mods yet; until it is, build it from this repo with `python build.py
-   --install` (see [docs/DEVELOPING.md](docs/DEVELOPING.md)), and subscribe to City Planning Draft in the Paradox
-   Launcher.
+1. **The mod.** Subscribe to [City Manager on Paradox Mods](https://mods.paradoxplaza.com/mods/169373/Windows) in the Paradox Launcher (or on the website).
+   City Planning Draft comes with it. Add mods in the launcher, not from inside the game. To build it yourself instead:
+   [docs/DEVELOPING.md](docs/DEVELOPING.md).
 2. **uv,** which runs the plugin's scripts. On Windows: `winget install astral-sh.uv`. Elsewhere: the one-line install on
    [docs.astral.sh/uv](https://docs.astral.sh/uv/).
 3. **The plugin.** In Claude Code (the Claude desktop app's Code tab, or a terminal), type:
@@ -137,8 +137,8 @@ From then on: tell Claude when you're about to play and when you've just played 
 
 ## Current progress
 
-Early days. I play with it in my own city every session, and it has a lot of automatic tests, but it isn't on Paradox
-Mods yet. I play on Linux. Windows is covered by the
+Early days. The first beta is on [Paradox Mods](https://mods.paradoxplaza.com/mods/169373/Windows) since 25 November 2026. I play with it in my own city every
+session, and it has a lot of automatic tests. I play on Linux. Windows is covered by the
 automatic tests but hasn't had a player yet, so if you're on Windows, you'd be a big help. What's planned is in the
 Features list above.
 

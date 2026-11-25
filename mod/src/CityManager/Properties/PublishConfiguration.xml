@@ -11,7 +11,7 @@
 
 You build the city. The City Manager keeps the plans and keeps you on track.
 
-City Manager is an in-game journal for your city. A City Manager writes it between your play sessions: Claude, Anthropic's AI, running in Claude Code on your own computer. Before you play, it writes tonight's plan. While you play, no AI runs. After you play, it reviews what you built and writes the next plan.
+City Manager is an in-game journal for your city, kept by a City Manager: Claude, Anthropic's AI, in Claude Code on your own computer. Before you load your city, it writes the plan. Afterwards, it reviews what you built and writes the next one. No AI runs alongside the game.
 
 ## Features
 
@@ -25,13 +25,15 @@ City Manager is an in-game journal for your city. A City Manager writes it betwe
 - With the Claude Code plugin: a founding chat for a new city, and a first road plan drawn from a survey of its map
 - Works on its own as a notebook, without Claude
 
-## How to run it
+## How to use it
 
-1. Subscribe. City Planning Draft is required and comes with it.
-2. In a city, press **Ctrl+J** and start a journal.
-3. For the City Manager: in Claude Code, install the plugin with one line (on GitHub), then tell Claude "Set up City Manager for my city".
-4. Before you play, tell Claude you're about to play. Then close Claude and play.
-5. When you're done, press *Done for today* and save. Then tell Claude you've just played.
+1. Subscribe. City Planning Draft, the build overlay, comes with it.
+2. In Claude Code, install the plugin (one line, on GitHub) and say "Set up City Manager for my city". Starting a new city? Say "Let's found a new city" instead.
+3. Start the game, then tell Claude you're about to load your city. It writes the plan into your journal.
+4. Close Claude, load your city and press **Ctrl+J**: the plan is on the Today tab.
+5. When you're done, press *Done for today* and save. Then tell Claude: it reviews what you built and writes the next plan.
+
+Without Claude, it's still a notebook: press **Ctrl+J** in any city and start a journal.
 
 ## Please read
 

@@ -83,7 +83,9 @@ test("table rows that start with dashes are kept; only a dashes-only second row 
 test("a table row of spaces stays fast (no backtracking)", () => {
     const t0 = performance.now();
     md("|" + " ".repeat(29990) + "|\n" + "| " + " ".repeat(29990));
-    assert.ok(performance.now() - t0 < 100);
+    // Backtracking would take seconds; a busy CI machine can need over 100 ms for a cold first call (24 Nov, Windows).
+    const ms = performance.now() - t0;
+    assert.ok(ms < 1000, `${ms} ms`);
 });
 
 test("a picture line becomes a Picture; half-written picture syntax stays text (no hang, no extra pictures)", () => {

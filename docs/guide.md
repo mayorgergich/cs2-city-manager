@@ -24,9 +24,9 @@ plans.
 
 ## Setting it up
 
-1. **The mod.** Subscribe to City Manager in the Paradox Launcher, and make sure City Planning Draft is on in the same
-   playset. Until City Manager is on Paradox Mods, build it from this repo
-   ([DEVELOPING.md](DEVELOPING.md)). Add mods in the launcher, never from inside the game.
+1. **The mod.** Subscribe to [City Manager on Paradox Mods](https://mods.paradoxplaza.com/mods/169373/Windows) in the Paradox Launcher. City Planning Draft comes
+   with it; make sure both are on in the playset you play with. Add mods in the launcher, never from inside the game.
+   (To build it yourself instead: [DEVELOPING.md](DEVELOPING.md).)
 2. **The plugin.** In Claude Code, type:
 
    ```

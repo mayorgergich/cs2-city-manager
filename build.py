@@ -91,7 +91,13 @@ def run_suite(name, cmd):
         print(f"   {name}: ok ({summary[-1].strip() if summary else 'passed'})")
         return True
     print(f"   {name}: FAILED")
-    print("\n".join(out.splitlines()[-30:]))
+    # Each failing test with its details (node: "not ok", unittest: FAIL/ERROR, dotnet: "Failed "), then the summary.
+    lines = out.splitlines()
+    keep = set(range(max(0, len(lines) - 15), len(lines)))
+    for i, ln in enumerate(lines):
+        if re.match(r"\s*(not ok \d|✖ |FAIL:|ERROR:|Failed )", ln):
+            keep.update(range(max(0, i - 1), min(len(lines), i + 30)))
+    print("\n".join(lines[i] for i in sorted(keep)))
     return False
 
 
