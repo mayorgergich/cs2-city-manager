@@ -303,6 +303,17 @@ def prep(src, is_source, snap, now_path, then_path, plan_path, name):
     # the guide
     print("## The guide\n")
     print(guide_status(name) + "\n")
+    # the mods scan
+    if is_source:
+        scanned = Path(src).expanduser().parent / "manager/mods.json"
+        playset = journal.LOCALLOW / ".cache/Mods/playset_config.json"
+        print("## The Mayor's mods\n")
+        if not scanned.exists():
+            print("Not scanned yet: `mods.py scan` (seconds), so plans can name the Mayor's own packs.\n")
+        elif playset.exists() and playset.stat().st_mtime > scanned.stat().st_mtime:
+            print("The playset changed since the last scan: `mods.py scan` again (instant for the mods it has seen).\n")
+        else:
+            print("Scanned and up to date (`<city>/manager/mods.md`; `mods.py find` for an asset).\n")
     return 0
 
 

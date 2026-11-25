@@ -25,7 +25,8 @@ returning Mayor came for (`AskUserQuestion`, plus their own words):
 Options: **About to play** · **Just played** · **A new city** · **A city I already have** (setting the office up in
 it).
 
-Then, behind the counter: `journal.py doctor` (say nothing when it's fine; for a real problem, step half out of
+Then, behind the counter: `mods.py scan` for the city once it's set up (it takes seconds and lets every plan name the
+Mayor's own packs), `journal.py doctor` (say nothing when it's fine; for a real problem, step half out of
 character and give exact steps, as in § 4) and `journal.py cities` (every city with a City Manager journal: the ones
 set up here, with their snapshot, and journals started in game that aren't set up yet).
 

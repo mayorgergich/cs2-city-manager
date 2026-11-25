@@ -73,7 +73,7 @@ you share it.
 
 ## The plugin (on your computer, with Claude Code)
 
-The plugin is a Claude Code skill plus seven Python scripts. Claude Code runs on your own computer.
+The plugin is a Claude Code skill plus eight Python scripts. Claude Code runs on your own computer.
 
 | Script | Reads | Writes |
 |---|---|---|
@@ -82,6 +82,7 @@ The plugin is a Claude Code skill plus seven Python scripts. Claude Code runs on
 | `founding.py` | The game's map files (the game's own, from Paradox Mods, your own), the launcher's playset file (`.cache/Mods/playset_config.json`) and its database (`launcher-v2.sqlite`, opened read only, for mod names), and a city's charter (`manager/charter.md`, or `founding.md` in older cities) | Nothing |
 | `survey.py` | A city snapshot, and the city's charter | Map pictures and `survey.json`, in the folder you name |
 | `plan.py` | A road plan (a JSON file) and a city snapshot | Pictures and a JSON report, where you name them; with `grid`, new streets added to the plan file you name |
+| `mods.py` | The launcher's playset file (`.cache/Mods/playset_config.json`) and database (`launcher-v2.sqlite`, opened read only, for names and short descriptions), the downloaded mods' own files (`.cache/Mods/pdx_mods`) and local mods (`Mods`) | `mods.md` and `mods.json` in the city's `manager` folder, and a cache of each mod's answer in its data folder (`mods-cache`) |
 | `report.py` | The city snapshots (the newest, and the one from the last report), the city's plan, the journal and `mayor.json` (never written), City Planning Draft's exports (which guide is newest) | Two pictures in the journal's `images` folder: a fresh map and the plan's progress |
 | `cityplan.py` | City Planning Draft's documents (to keep your own drawings) | Guides in City Planning Draft's `Exports` folder (with `front`, one of your guides written again unchanged, so the planner sees it as the newest), and a copy of a plan where you ask |
 
@@ -90,7 +91,7 @@ The plugin is a Claude Code skill plus seven Python scripts. Claude Code runs on
   the founding chat's map pictures) from their usual public sources the first time. That is uv's own download, not
   this project's. If uv is missing, the City Manager may offer to install it: one command you approve or decline.
 - **Installing the plugin:** Claude Code downloads it from this GitHub repo. The plugin has no hooks, agents or servers
-  of its own: just the skill and its seven scripts.
+  of its own: just the skill and its eight scripts.
 
 ### What goes to Anthropic
 

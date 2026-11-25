@@ -43,7 +43,7 @@ Everything stays on your computer except what you share with Claude itself:
 
 - **It reads** the game's own files on your computer: City Manager's journal folder and the city snapshots the mod
   writes (roads, buildings, the budget and so on), the game's map files and the launcher's mod list (to help pick a
-  map and check your mods), and City Planning Draft's plans.
+  map, check your mods and name the assets your packs add), and City Planning Draft's plans.
 - **It writes** your journal (`ModsData/CityManager`), plan guides for City Planning Draft (its `Exports` folder),
   pictures, and its own notes about your city in its data folder (`%LOCALAPPDATA%\CityManager` or
   `~/.local/share/city-manager`).

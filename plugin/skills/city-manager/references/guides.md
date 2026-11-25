@@ -30,7 +30,8 @@ or junction to use. For every item in a Now or Next plan, the journal step gives
 - **the exact piece, by the name the Mayor sees in the game's menu**: the road ("Small Road Oneway with Trees", a Road
   Builder road by its own name), how many lanes, one-way or two-way, and for a junction its kind (roundabout and its
   size or asset, traffic lights, stop signs, an interchange piece). Take names from `city.py catalogue` (the game's
-  menu names, Road Builder roads included, with lanes and cost; locked pieces are left out) or the city's mods list,
+  menu names, Road Builder roads included, with lanes and cost; locked pieces are left out) or, for a building, park,
+  prop or surface from the Mayor's packs, `mods.py find` (its menu name, pack, lot and cost),
   never from memory, and say when a choice is a suggestion rather than a must;
 - **a close-up picture** of that spot (the plan drawn over the city, the item marked), on its own line in the step's
   project page or the briefing: `plan.py cards plan.json <city>/journal --out-dir <city>/journal/images` draws one for
