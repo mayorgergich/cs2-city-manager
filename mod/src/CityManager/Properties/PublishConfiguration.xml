@@ -2,7 +2,7 @@
 	<!-- City Manager's Paradox Mods page. tools/publish.sh runs the game's ModPublisher with this file, from
 	     mod/src/CityManager (paths below are relative to it). After the first publish the script writes the new id
 	     into ModId: keep it there, it stops a second copy of the mod from being published. -->
-	<ModId Value="" />
+	<ModId Value="169373" />
 	<DisplayName Value="City Manager (beta)" />
 	<ShortDescription Value="An in-game journal and planner for your city. A City Manager (Claude) writes your plans between sessions; you build them." />
 	<!-- LongDescription and ChangeLog are read as written: keep their lines at column zero, or the page shows a code block. -->
