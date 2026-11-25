@@ -4,7 +4,7 @@
 	     into ModId: keep it there, it stops a second copy of the mod from being published. -->
 	<ModId Value="169373" />
 	<DisplayName Value="City Manager (beta)" />
-	<ShortDescription Value="An in-game journal for your city. Your City Manager (Claude) plans between sessions, and you build." />
+	<ShortDescription Value="A Journal Mod and AI Planning Tool to enjoy building your city." />
 	<!-- LongDescription and ChangeLog are read as written: keep their lines at column zero, or the page shows a code block. -->
 	<LongDescription>
 # City Manager
