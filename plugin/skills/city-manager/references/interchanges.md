@@ -18,6 +18,21 @@ ramp: off-ramps leave on the left of each direction, and on-ramps join on the le
 | A street crosses a railway | a tunnel under it (or a bridge over it where the ground falls away) | `Underpass` / `Overpass` |
 | A street over water or a valley | a bridge (a landmark bridge where it's seen from far) | road with `"bridge": true` |
 
+**Draw them with the templates**, not by hand (`plan.py`'s docstring has every option); each takes places along
+streets (`plan.py frame`):
+
+| Design | Command |
+|---|---|
+| Plain underpass (a street under a highway, a railway or a road) | `plan.py underpass plan.json <src> --plan "Now · …" --number 3 --name "Mill Road under the highway" --under "Ring Highway" --along "Mill Road" --from 1300 --to 1900` |
+| Template A, tunnel diamond | `plan.py interchange … --kind diamond --number 4 --name "Mill junction" --highway "Ring Highway" --street "Mill Road"` (steps 4, 5, 6: the underpass, the frontage streets, the slip roads) |
+| Template B, underground stem | `plan.py interchange … --kind stem --number 7 --name "Port stem" --highway "Ring Highway" --from "Dock Road@end"` |
+| A long tunnel (Seattle-style, under a district or a hill) | `plan.py tunnel … --number 8 --name "Harbour tunnel" --through PLACE PLACE … --depth 20` |
+
+They write each piece with its depth, so the build cards say how deep; they refuse ramps over 20%, take a gravel
+street under as a paved road, and mirror the slip roads for left-hand traffic. Then `plan.py check` and a picture
+(`plan.py draw`) before showing the Mayor. A prebuilt interchange is a junction marker with its menu name as `piece`
+(`plan.py junction --type Interchange --piece "Trumpet Intersection" --at "<highway> x <street>"`).
+
 The prebuilt ones are in the game's Intersections menu; `city.py catalogue` lists them with their monthly upkeep and
 whether they're unlocked. Their size isn't in the snapshot: say "check it fits in game" on the card, and leave room
 (they're often several hundred metres across). Hand-built ones are cheaper, fit tight spots and teach the Mayor how

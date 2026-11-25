@@ -1,7 +1,7 @@
 {
   "name": "city-manager",
   "displayName": "City Manager",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "A City Manager for your Cities: Skylines II city. Before you play, it writes tonight's plan into the in-game journal and draws it over your city with City Planning Draft. After you play, it looks at what you built and gets the next plan ready. It never builds anything and never runs while you play.",
   "author": {
     "name": "mayorgergich"

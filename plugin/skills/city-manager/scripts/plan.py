@@ -56,6 +56,22 @@ usage:
       go into the plan as existing roads). Offsets follow the street's own direction where it is, so on a bend a big
       offset swings with it: say a place from the nearest street. Then `plan.py check`.
 
+  plan.py underpass PLAN.json <src> --plan … --number N --name WORDS --under "<road or railway>"
+               (--along STREET [--from S --to S] | --through PLACE PLACE…) [--piece P] [--depth 13] [--ramp 100] [--span W]
+  plan.py interchange PLAN.json <src> --plan … --number N --name WORDS --highway "<highway>" --kind diamond
+               (--street STREET | --along … | --through …) [--frontage-gap 90] [--frontage-length 260] [--street-piece P]
+  plan.py interchange PLAN.json <src> --plan … --number N --name WORDS --highway "<highway>" --kind stem --from PLACE
+               [--piece "Four-Lane Road"] [--depth 13] [--ramp 100]
+  plan.py tunnel PLAN.json <src> --plan … --number N --name WORDS (--through PLACE PLACE… | --along …) [--depth 13] [--ramp 100]
+      interchanges.md's templates, drawn into the plan file from the street frame: a street under a highway, a railway
+      or a road (down-ramp, tunnel just past its edges, up-ramp, an Underpass marker); a tunnel diamond (Template A: the
+      street under the highway between frontage streets 90 m out, step N; the frontage streets, step N+1; four slip
+      roads, off before the crossing and on after it on each direction's traffic side, step N+2); an underground stem
+      (Template B: a road ending at the highway, under it to underground junctions 32 m either side, four slip roads
+      down to them); a long tunnel along a line (a Seattle-style bored road). Pieces carry their depth, so the build
+      card says "13 m down". Ramps default to 12% and are refused over 20%; a gravel street goes under as a paved
+      road; left-hand traffic (from the snapshot) mirrors the slip roads.
+
   plan.py grid PLAN.json <src> --along "<street>" --side left|right --rows N [--start S] [--length L]
                [--piece "Two-Lane Road"] [--ends both|start|end|none] [--block B] [--zone TYPE]
                [--plan "Now · <Topic>"] [--number N] [--name WORDS] [--from X,Z]
@@ -677,7 +693,8 @@ def draw(snap, plans, out, view="plan", only=(), around=None, title=None, width=
         box = [b[0] - pad, b[1] + pad, b[2] - pad, b[3] + pad]
     else:
         near = [p for p in plans if STATUS_ORDER.get(status_of(p.get("name")), 3) >= 3] or plans
-        pts = [q for p in near for kind in ("roads", "areas", "junctions", "markers") for it in arr(p.get(kind)) if isinstance(it, dict) for q in item_points(it)]
+        pts = [q for p in near for kind in ("roads", "areas", "junctions", "markers") for it in arr(p.get(kind))
+               if isinstance(it, dict) and not it.get("existing") for q in item_points(it)]   # roads already there don't set the zoom
         if not pts:
             b = st["box"]
         else:
@@ -1248,7 +1265,8 @@ def main(argv):
         rest_ = args[3:]
         return main_frame(args[1], args[2], rest_, lambda flag, default=None: rest_[rest_.index(flag) + 1]
                           if flag in rest_ and rest_.index(flag) + 1 < len(rest_) else default)
-    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid", "ship", "road", "zone", "junction", "advance"):
+    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid", "ship", "road", "zone", "junction", "advance",
+                                        "tunnel", "underpass", "interchange"):
         print(__doc__)
         return 2
     cmd, plan_path, src = args[0], args[1], args[2]
@@ -1263,8 +1281,9 @@ def main(argv):
         return main_advance(plan_path, src, rest, opt)
     if cmd == "grid":
         return main_grid(plan_path, city.load(sv.snapshot_file(src)), rest, opt)
-    if cmd in ("road", "zone", "junction"):
-        return {"road": main_road, "zone": main_zone, "junction": main_junction}[cmd](plan_path, city.load(sv.snapshot_file(src)), rest, opt)
+    if cmd in ("road", "zone", "junction", "tunnel", "underpass", "interchange"):
+        return {"road": main_road, "zone": main_zone, "junction": main_junction, "tunnel": main_tunnel, "underpass": main_underpass,
+                "interchange": main_interchange}[cmd](plan_path, city.load(sv.snapshot_file(src)), rest, opt)
     if cmd in ("built", "cards"):
         path = sv.snapshot_file(src, "--start" in rest)
         snap = city.load(path)
@@ -1643,6 +1662,263 @@ def main_junction(plan_path, snap, rest, opt):
     return 0
 
 
+# --- templates: tunnels, underpasses and interchanges (interchanges.md), built on the street frame
+
+SLIP = "One-Lane One-Way Highway"
+MAX_GRADE = 0.20      # the game refuses steeper ramps
+RAMP_GRADE = 0.12     # a ramp's default slope
+
+
+def clear_half(width):
+    """How far either side of a crossed road's centre line the tunnel runs: just past its edge (interchanges.md: about
+    15 m from a highway's centre), so the ramps' open cuts stop short of it."""
+    return max(15.0, width / 2 + 4)
+
+
+def under_piece(edges, given, fallback, notes):
+    """The road piece for a street going underground: the one given, else the street's own, unless that's a gravel
+    road (the game builds those on the ground only)."""
+    if given:
+        return given
+    title = Counter(e.get("title") for e in edges).most_common(1)[0][0] if edges else None
+    if title and "gravel" in title.casefold():
+        notes.append(f"the street is a {title}, which can't go underground: the underpass uses a {fallback} (change it with the piece option)")
+        return fallback
+    return title or fallback
+
+
+def line_part(pts, name="new road"):
+    import frame
+    return frame.Part(name, pts, [], [(0, None), (len(pts) - 1, None)])
+
+
+def crossing_on(line, other):
+    """Where a line first crosses another (frame parts): (s on the line, s on the other, x, z) or None."""
+    import frame
+    for i, (a, b) in enumerate(zip(line.pts, line.pts[1:])):
+        for k, (c, d) in enumerate(zip(other.pts, other.pts[1:])):
+            hit = frame.seg_cross(a, b, c, d)
+            if hit:
+                return (line.cum[i] + math.dist(a, hit), other.cum[k] + math.dist(c, hit), hit[0], hit[1])
+    return None
+
+
+def under_items(line, s_c, half, ramp, depth, piece, cls, tag, under_name=None):
+    """A road going under something at s_c on its line: down-ramp, tunnel (2 x half long), up-ramp. Returns (roads,
+    the tunnel's name, notes)."""
+    end = depth - 1 if depth >= 12 else depth
+    a, b, c, d = s_c - half - ramp, s_c - half, s_c + half, s_c + half + ramp
+    if a < -1 or d > line.length + 1:
+        raise SystemExit(f"The road is too short for this: it needs {2 * (half + ramp):,.0f} m around the crossing "
+                         f"({line.length:,.0f} m from {max(0.0, s_c):,.0f}); give a longer line or a shorter --ramp.")
+    grade = end / ramp
+    notes = [f"ramps of {ramp:,.0f} m at {grade:.0%}"]
+    if grade > MAX_GRADE:
+        raise SystemExit(f"{ramp:,.0f} m ramps to {end:g} m down are {grade:.0%}: the game refuses over 20%. Longer --ramp, or a shallower --depth.")
+    if grade > 0.17:
+        notes.append("steep: build the ramp first and read its slope in game")
+    under = f" under {under_name}" if under_name else ""
+    mk = lambda role, s0, s1, extra: dict({"name": f"{tag}, {role}", "class": cls, "piece": piece,
+                                           "points": [[round(x, 1), round(z, 1)] for x, z in line.line(s0, s1, step=30.0)]}, **extra)
+    roads = [mk("down-ramp", a, b, {"depth": [0, end]}), mk("tunnel" + under, b, c, {"tunnel": True, "depth": depth}),
+             mk("up-ramp", c, d, {"depth": [end, 0]})]
+    return roads, roads[1]["name"], notes
+
+
+def existing_item(st, name, near):
+    part = min(st.parts(name), key=lambda q: q.project(*near)[2])
+    return {"name": st.find(name), "class": road_class_of(part.edges), "existing": True,
+            "points": [[round(a, 1), round(b, 1)] for a, b in part.line(0, part.length, step=60.0)]}, part
+
+
+def template_line(st, rest, opt):
+    """The new road's line: --along STREET [--from S --to S] or --through PLACE PLACE…"""
+    if opt("--along"):
+        p = st.part(*split_part(opt("--along")))
+        s0, s1 = p.s_of(opt("--from", "start")), p.s_of(opt("--to", "end"))
+        return line_part(p.line(s0, s1, step=20.0), p.name), p.edges
+    specs = values(rest, "--through")
+    if len(specs) < 2:
+        raise SystemExit("give the road's line: --along STREET [--from S --to S] or --through PLACE PLACE…")
+    return line_part([st.place(x) for x in specs]), []
+
+
+def tag_of(opt):
+    number, name = opt("--number"), opt("--name")
+    if not number or not name:
+        raise SystemExit("needs --number N (its step number) and --name WORDS")
+    return number, name
+
+
+def main_tunnel(plan_path, snap, rest, opt):
+    """plan.py tunnel: a long tunnel along a line (a Seattle-style bored road): ramp down, tunnel, ramp up."""
+    import frame
+    plan_name = opt("--plan")
+    if not plan_name:
+        raise SystemExit("needs --plan \"<Status> · <Topic>\"")
+    number, name = tag_of(opt)
+    st = frame.Streets(snap)
+    line, _ = template_line(st, rest, opt)
+    depth, ramp = float(opt("--depth", 13)), float(opt("--ramp", round(12 / RAMP_GRADE, -1)))
+    half = (line.length - 2 * ramp) / 2
+    if half < 10:
+        raise SystemExit(f"{line.length:,.0f} m is too short for a tunnel with {ramp:,.0f} m ramps.")
+    roads, tunnel, notes = under_items(line, line.length / 2, half, ramp, depth, opt("--piece", "Four-Lane Road"), opt("--class", "Arterial"), f"{number} {name}")
+    add_items(plan_path, plan_name, roads=roads)
+    print(f"Added to {plan_name!r}: {name} as step {number}: down-ramp, a {2 * half:,.0f} m tunnel about {depth:g} m down, up-ramp "
+          f"({'; '.join(notes)}).\nCheck it: plan.py check {Path(plan_path).name} <src>.")
+    return 0
+
+
+def main_underpass(plan_path, snap, rest, opt):
+    """plan.py underpass: a street under a highway, a railway or another road, no access (interchanges.md)."""
+    import frame
+    plan_name = opt("--plan")
+    if not plan_name or not opt("--under"):
+        raise SystemExit("needs --plan \"<Status> · <Topic>\" and --under \"<road or railway>\"")
+    number, name = tag_of(opt)
+    st = frame.Streets(snap)
+    line, edges = template_line(st, rest, opt)
+    under = opt("--under")
+    rails = [e for e in st.net.by_kind("train", "tram", "subway") if under.casefold() in (e.get("streetName") or e.get("title") or "").casefold()]
+    if rails:
+        other = line_part([q for e in rails for q in e["line"]], under)
+        hit, ex = None, None
+        for e in rails:
+            hit = crossing_on(line, line_part(e["line"]))
+            if hit:
+                break
+        width = 16.0
+    else:
+        ex, other = existing_item(st, under, line.point(line.length / 2))
+        hit = crossing_on(line, other)
+        width = other.width() + (8.0 if ex["class"] == "Highway" else 0.0)
+        under = ex["name"]
+    if not hit:
+        raise SystemExit(f"The line doesn't cross {under}: give a line that does (`plan.py frame` shows where streets run).")
+    half = float(opt("--span", 0)) / 2 or clear_half(width)
+    ramp = float(opt("--ramp", round(12 / RAMP_GRADE, -1)))
+    pre = []
+    piece = under_piece(edges, opt("--piece"), "Two-Lane Road", pre)
+    roads, tunnel, notes = under_items(line, hit[0], half, ramp, float(opt("--depth", 13)), piece,
+                                       road_class_of(edges) if edges else opt("--class", "Collector"), f"{number} {name}", under)
+    notes = pre + notes
+    juncs = []
+    if ex:
+        roads.append(ex)
+        juncs.append({"name": f"{number} {name}, under {under}", "type": "Underpass", "position": [round(hit[2], 1), round(hit[3], 1)],
+                      "road_a": tunnel, "road_b": under})
+    add_items(plan_path, plan_name, roads=roads, junctions=juncs)
+    print(f"Added to {plan_name!r}: {name} as step {number}: {piece} under {under}, a {2 * half:,.0f} m tunnel about "
+          f"{opt('--depth', 13)} m down with {'; '.join(notes)}.\nCheck it: plan.py check {Path(plan_path).name} <src>.")
+    return 0
+
+
+def main_interchange(plan_path, snap, rest, opt):
+    """plan.py interchange --kind diamond|stem: interchanges.md's Template A (a tunnel diamond) or B (an underground
+    stem), drawn from the highway's own frame. Right-hand traffic unless the snapshot says left."""
+    import frame
+    plan_name, kind = opt("--plan"), opt("--kind", "diamond")
+    if not plan_name or not opt("--highway"):
+        raise SystemExit("needs --plan \"<Status> · <Topic>\" and --highway \"<highway>\"")
+    if kind not in ("diamond", "stem"):
+        raise SystemExit("--kind is diamond (a street crossing with access) or stem (a road ending at the highway)")
+    number, name = tag_of(opt)
+    n = int(re.match(r"\d+", number).group()) if re.match(r"\d+", number) else None
+    nb = lambda k: str(n + k) if n is not None else f"{number}{'abc'[k]}"
+    st = frame.Streets(snap)
+    left = bool(obj(snap.get("map")).get("leftHandTraffic"))
+    R = 1.0 if left else -1.0          # the side of the highway (t sign) that traffic going +s drives on
+    depth, piece = float(opt("--depth", 13)), opt("--piece", "Four-Lane Road")
+    roads, juncs, notes = [], [], []
+    if kind == "diamond":
+        line, edges = template_line(st, rest, opt) if (opt("--along") or values(rest, "--through")) else (None, [])
+        if line is None and opt("--street"):
+            sp = st.part(*split_part(opt("--street")))
+            line, edges = line_part(sp.pts, sp.name), sp.edges
+        if line is None:
+            raise SystemExit("a diamond needs the crossing street: --street STREET, --along STREET [--from --to] or --through PLACE PLACE")
+        ex, hw = existing_item(st, opt("--highway"), line.point(line.length / 2))
+        hit = crossing_on(line, hw)
+        if not hit:
+            raise SystemExit(f"That street doesn't cross {ex['name']}.")
+        s_c = hit[1]
+        F, half = float(opt("--frontage-gap", 90)), clear_half(hw.width() + 8)
+        # where the street is F metres from the highway on each side: the frontage junctions
+        ts = [(s, hw.project(*line.point(s))[1]) for s in [hit[0] + k for k in range(-400, 401, 5)] if 0 <= s <= line.length]
+        near = [s for s, t in ts if s < hit[0] and abs(t) >= F]
+        far = [s for s, t in ts if s > hit[0] and abs(t) >= F]
+        if not near or not far:
+            raise SystemExit(f"The street must run at least {F:,.0f} m on both sides of {ex['name']} for the frontage streets.")
+        sa, sb = max(near), min(far)
+        ramp = min(hit[0] - half - sa, sb - hit[0] - half)
+        tag = f"{number} {name}"
+        street_piece = under_piece(edges, opt("--street-piece"), piece, notes)
+        under, tunnel, un = under_items(line, hit[0], half, ramp, depth, street_piece, road_class_of(edges) if edges else "Arterial", tag, ex["name"])
+        roads += under + [ex]
+        notes += un
+        juncs.append({"name": f"{tag}, interchange", "type": "Interchange", "position": [round(hit[2], 1), round(hit[3], 1)],
+                      "road_a": tunnel, "road_b": ex["name"]})
+        Lf = float(opt("--frontage-length", 260))
+        fr_piece = opt("--frontage-piece", "Two-Lane Road")
+        for side in (1.0, -1.0):
+            word = hw.left_word(s_c) if side > 0 else sv.direction(*[-v for v in sv_left(hw, s_c)])
+            roads.append({"name": f"{nb(1)} {name}, {word} frontage street", "class": "Collector", "piece": fr_piece,
+                          "points": [[round(x, 1), round(z, 1)] for x, z in hw.line(s_c - Lf, s_c + Lf, side * F, step=40.0)]})
+        # slip roads, in the direction they're driven: off before the crossing, on after it, each on its traffic side
+        P = lambda s_, t_: [round(v, 1) for v in hw.point(s_c + s_, t_)]
+        plus, minus = hw.heading_word(), sv.direction(*[-(hw.pts[-1][i] - hw.pts[0][i]) for i in (0, 1)])
+        for direction, word in ((1.0, plus), (-1.0, minus)):
+            t = R * direction
+            g = lambda s_: s_ * direction
+            roads.append({"name": f"{nb(2)} {name}, {word}-bound off-ramp", "class": "Highway", "piece": SLIP,
+                          "points": [P(g(-320), t * 8), P(g(-170), t * 30), P(g(-110), t * F)]})
+            roads.append({"name": f"{nb(2)} {name}, {word}-bound on-ramp", "class": "Highway", "piece": SLIP,
+                          "points": [P(g(110), t * F), P(g(170), t * 30), P(g(320), t * 8)]})
+        summary = (f"{name}: the street under {ex['name']} (step {number}), frontage streets {F:,.0f} m out (step {nb(1)}), "
+                   f"four slip roads (step {nb(2)})")
+    else:
+        if not opt("--from"):
+            raise SystemExit("a stem needs --from PLACE: where the road comes from, on one side of the highway")
+        start = st.place(opt("--from"))
+        ex, hw = existing_item(st, opt("--highway"), start)
+        s_c, t0, _ = hw.project(*start)
+        side = 1.0 if t0 > 0 else -1.0
+        J, ramp = 32.0, float(opt("--ramp", round(12 / RAMP_GRADE, -1)))
+        if abs(t0) < J + ramp:
+            raise SystemExit(f"--from is {abs(t0):,.0f} m from the highway: the stem needs {J + ramp:,.0f} m on its side.")
+        stem = line_part([hw.point(s_c, t0), hw.point(s_c, -side * J)])
+        tag = f"{number} {name}"
+        L = stem.length
+        end = depth - 1
+        mk = lambda role, s0, s1, extra: dict({"name": f"{tag}, {role}", "class": "Arterial", "piece": piece,
+                                               "points": [[round(x, 1), round(z, 1)] for x, z in stem.line(s0, s1, step=30.0)]}, **extra)
+        a = L - 2 * J - ramp
+        if a > 1:
+            roads.append(mk("approach", 0, a, {}))
+        roads += [mk("down-ramp", a, L - 2 * J, {"depth": [0, end]}), mk(f"tunnel under {ex['name']}", L - 2 * J, L, {"tunnel": True, "depth": depth})]
+        notes.append(f"ramp of {ramp:,.0f} m at {end / ramp:.0%}")
+        jn, jf = hw.point(s_c, side * J), hw.point(s_c, -side * J)
+        roads.append(ex)
+        for label, pt in (("near", jn), ("far", jf)):
+            juncs.append({"name": f"{tag}, {label} underground junction", "type": "Normal", "position": [round(pt[0], 1), round(pt[1], 1)],
+                          "road_a": roads[-2]["name"], "road_b": ex["name"], "piece": "stop signs or none (take the game's lights off)"})
+        P = lambda s_, t_: [round(v, 1) for v in hw.point(s_c + s_, t_)]
+        plus, minus = hw.heading_word(), sv.direction(*[-(hw.pts[-1][i] - hw.pts[0][i]) for i in (0, 1)])
+        for direction, word in ((1.0, plus), (-1.0, minus)):
+            t = R * direction
+            g = lambda s_: s_ * direction
+            roads.append({"name": f"{nb(1)} {name}, {word}-bound off-ramp", "class": "Highway", "piece": SLIP, "depth": [0, depth],
+                          "points": [P(g(-260), t * 8), P(g(-120), t * 22), P(g(-35), t * J), P(0, t * J)]})
+            roads.append({"name": f"{nb(1)} {name}, {word}-bound on-ramp", "class": "Highway", "piece": SLIP, "depth": [depth, 0],
+                          "points": [P(0, t * J), P(g(35), t * J), P(g(120), t * 22), P(g(260), t * 8)]})
+        summary = f"{name}: the stem under {ex['name']} (step {number}), four slip roads down to its underground junctions (step {nb(1)})"
+    add_items(plan_path, plan_name, roads=roads, junctions=juncs)
+    print(f"Added to {plan_name!r}: {summary}; {'; '.join(notes)}; {'left' if left else 'right'}-hand traffic.\n"
+          f"Check it: plan.py check {Path(plan_path).name} <src>, then look at it: plan.py draw … --around \"{roads[0]['name']}\".")
+    return 0
+
+
 def main_grid(plan_path, snap, rest, opt):
     def pair(text, what):
         try:
@@ -1740,11 +2016,32 @@ def card_groups(plans, names):
     return sorted(groups.values(), key=order)
 
 
+def depth_words(d):
+    if isinstance(d, (int, float)):
+        return f"about {d:g} m down"
+    if isinstance(d, list) and len(d) == 2 and all(isinstance(v, (int, float)) for v in d):
+        a, b = d
+        return f"down to {b:g} m" if a == 0 else f"up from {a:g} m" if b == 0 else f"from {a:g} to {b:g} m down"
+    return ""
+
+
+def a_word(word):
+    return ("an " if word[:1].lower() in "aeiou" else "a ") + word
+
+
 def card_note(items):
-    """A build card's note when the plan gives none: the pieces and how to build them."""
+    """A build card's note when the plan gives none: the pieces and how to build them. Pieces with a depth (tunnels,
+    ramps) are said one by one, in order: "down-ramp: Four-Lane Road, about 110 m, down to 12 m"."""
     roads, bits = Counter(), []
     metres = Counter()
     for kind, it in items:
+        if kind == "roads" and it.get("depth") is not None:
+            role = str(it.get("name") or "").split(", ", 1)[-1] if ", " in str(it.get("name") or "") else ""
+            L = length(item_points(it))
+            what = ", ".join(x for x in ((piece_of(it) or "road") + (" in a tunnel" if it.get("tunnel") else ""),
+                                         f"about {round(L, -1) if L >= 100 else round(L):,.0f} m", depth_words(it.get("depth"))) if x)
+            bits.append(f"{role}: {what}" if role else what)
+            continue
         if kind == "roads":
             key = (piece_of(it) or f"{it.get('class', 'Local').lower()} road") + (" in a tunnel" if it.get("tunnel") else " on a bridge" if it.get("bridge") else "")
             roads[key] += 1
@@ -1755,7 +2052,7 @@ def card_note(items):
         bits.append(f"{key} ×{n} ({about} in all)" if n > 1 else f"{key}, {about}")
     for kind, it in items:
         if kind == "junctions":
-            bits.append(piece_of(it) or f"a {JUNCTION_WORDS.get(it.get('type'), 'junction')}")
+            bits.append(piece_of(it) or a_word(JUNCTION_WORDS.get(it.get("type"), "junction")))
     zones = sorted({it.get("type") for kind, it in items if kind == "areas" and it.get("type") in ZONE_KINDS})
     if zones:
         bits.append("zone " + " and ".join(zones))
