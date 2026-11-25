@@ -16,6 +16,7 @@ It refuses to write when something is wrong, and it lists the problems. The full
   briefing.md         the current briefing
   briefings/*.md      earlier briefings (moved here by `journal.py archive`)
   projects/*.md       one file per project
+  projects/archive/   finished projects moved out of the panel by `plan.py advance` (their ids stay known)
   reports/*.md        one file per report (newest first in game, sorted by date)
   city.md             the City tab: facts table, map, street names, what's where
   images/*.png        pictures, referenced as ![caption](name.png) on a line of its own; names of letters, digits,

@@ -83,6 +83,15 @@ usage:
       Ship again with --keep-mayor (their changes go into the plan file, backed up first) or --drop-mayor (the new
       guide replaces them): the Mayor's call. Moves under 8 m are nudges, left as planned.
 
+  plan.py advance PLAN.json <city>/journal [--promote "Next · <Topic>"] [--keep-done N] [--dry-run]
+      The move-on step, after a report: a Now plan whose every step number is built (by the newest snapshot) or ticked
+      (in the journal, the Mayor's tick or yours) becomes Done; a Done plan the newest guide already showed drops out
+      (kept in archive.json beside the plan file); a Next plan becomes Now only with --promote (the Mayor's choice: it
+      says so when Now is empty). The projects follow: their plan links take the new names, a project whose steps are
+      all done and whose plans are all Done closes with a log line, and one Done for N reports (3) moves to
+      projects/archive/ (its id stays known to older briefings), unless the current briefing names it. The plan file is
+      backed up first, then the journal is built. Then `plan.py ship` for the next guide.
+
   plan.py drawings <city>/journal [--map-id ID] [--json FILE]
       What the Mayor drew in the planner since the guide it holds (which guide that is, whether the newest was
       imported), with `plan.py check` on their drawings: for the report, and before planning the next streets.
@@ -1239,7 +1248,7 @@ def main(argv):
         rest_ = args[3:]
         return main_frame(args[1], args[2], rest_, lambda flag, default=None: rest_[rest_.index(flag) + 1]
                           if flag in rest_ and rest_.index(flag) + 1 < len(rest_) else default)
-    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid", "ship", "road", "zone", "junction"):
+    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid", "ship", "road", "zone", "junction", "advance"):
         print(__doc__)
         return 2
     cmd, plan_path, src = args[0], args[1], args[2]
@@ -1250,6 +1259,8 @@ def main(argv):
 
     if cmd == "ship":
         return main_ship(plan_path, src, rest, opt)
+    if cmd == "advance":
+        return main_advance(plan_path, src, rest, opt)
     if cmd == "grid":
         return main_grid(plan_path, city.load(sv.snapshot_file(src)), rest, opt)
     if cmd in ("road", "zone", "junction"):
@@ -2166,6 +2177,241 @@ def main_ship(plan_path, src, rest, opt):
         print("- Journal: " + ("built." if built_ok else "NOT built:\n" + build_out))
     print(f"\nFor the briefing: \"In the planner, Import latest file ({guide})\", then build from the Now plans.")
     return 0 if built_ok else 1
+
+
+# --- advance: the move-on step after a report
+
+EMPTIED = "layers = []  # every layer dropped"
+
+
+def layer_rewrite(front, renames, dropped):
+    """A project's front matter with its [[plans]] layers following plan renames and drops; a link whose layers all
+    dropped out goes (a guide link with nothing to show)."""
+    def fix(m):
+        names = [json.loads('"' + x + '"') for x in re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(2))]
+        new = [renames.get(n, n) for n in names if n not in dropped]
+        if names and not new:
+            return EMPTIED
+        return m.group(1) + "[" + ", ".join(json.dumps(n, ensure_ascii=False) for n in new) + "]"
+    front = re.sub(r'^(\s*layers\s*=\s*)\[(.*?)\]', fix, front, flags=re.M | re.S)
+    if EMPTIED not in front:
+        return front
+    lines, out, i = front.split("\n"), [], 0
+    while i < len(lines):
+        if lines[i].strip() == "[[plans]]":
+            j = i + 1
+            while j < len(lines) and not lines[j].lstrip().startswith("["):
+                j += 1
+            if any(EMPTIED in l for l in lines[i:j]):
+                while j < len(lines) and not lines[j].strip() and j > i:
+                    j += 1
+                i = j
+                continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
+def close_front(front, log_text, date):
+    """A project's front matter set to done, with a log line saying why."""
+    if re.search(r'^status\s*=', front, re.M):
+        front = re.sub(r'^status\s*=\s*"[^"]*"', 'status = "done"', front, count=1, flags=re.M)
+    else:
+        front = 'status = "done"\n' + front
+    return front.rstrip("\n") + f'\n\n[[log]]\ndate = "{date}"\ntext = {json.dumps(log_text, ensure_ascii=False)}\n'
+
+
+def main_advance(plan_path, src, rest, opt):
+    """plan.py advance PLAN.json <city>/journal: after a report, move the plan and the projects on."""
+    import tomllib
+    import contextlib
+    import io
+    import journal  # noqa: PLC0415
+    srcp = Path(src).expanduser()
+    if not (srcp / "journal.toml").exists():
+        raise SystemExit("advance needs the city's journal source folder (<city>/journal, with its journal.toml)")
+    cfg = tomllib.loads((srcp / "journal.toml").read_text(encoding="utf-8-sig"))
+    city_name = str(cfg.get("city") or "")
+    dry = "--dry-run" in rest
+    keep_done = int(opt("--keep-done", 3))
+    snap = city.load(city.snapshot_path(srcp))
+    raw = json.loads(Path(plan_path).read_text(encoding="utf-8-sig"))
+    plans = [q for q in (raw["plans"] if isinstance(raw.get("plans"), list) else [raw]) if isinstance(q, dict)]
+    exports = Path(cityplan.ROOT) / "Exports"
+    guides = guides_of(city_name, exports)
+    newest = max(guides, default=None, key=lambda g: g[0])
+    shown = set()
+    if newest:
+        try:
+            shown = {q.get("name") for q in json.loads(newest[1].read_text(encoding="utf-8-sig")).get("plans", []) if isinstance(q, dict)}
+        except (OSError, ValueError):
+            pass
+    _, j, m = journal.load_both(srcp)
+    ticks, stat = arr_dict(m.get("ticks")), arr_dict(m.get("status"))
+    built_j = {str(q.get("id")): q for q in arr(j.get("projects")) if isinstance(q, dict)}
+
+    def pages():
+        out = []
+        for f in sorted((srcp / "projects").glob("*.md")):
+            text = f.read_text(encoding="utf-8")
+            try:
+                front, body = split_page(text)
+                meta = tomllib.loads(front)
+            except (SystemExit, tomllib.TOMLDecodeError):
+                continue
+            out.append([f, front, body, meta])
+        return out
+
+    def steps_done(meta):
+        """(done, total) of a project's steps: the Mayor's tick or the manager's newer change, as the panel shows it."""
+        pid = str(meta.get("id") or "")
+        compiled = {str(st.get("id")): st for st in arr(built_j.get(pid, {}).get("steps")) if isinstance(st, dict)}
+        out = {}
+        for st in arr(meta.get("steps")):
+            if not isinstance(st, dict) or not st.get("id"):
+                continue
+            sid, mine = str(st["id"]), bool(st.get("done"))
+            c = compiled.get(sid)
+            out[sid] = (mine if c is None or bool(c.get("done")) != mine else journal.mayor_done(ticks, f"p:{pid}/{sid}", c), str(st.get("text", "")))
+        return out
+
+    pp = pages()
+    lines_plans, lines_projects = [], []
+    renames, dropped = {}, set()
+    built = {it["name"]: it["status"] for r in Built(snap).run(plans, every=True) for it in r["items"]}
+    # 1. Now plans whose every step is built (by the snapshot) or ticked (in the journal) become Done
+    for q in plans:
+        name = q.get("name") or ""
+        if status_of(name) != "Now":
+            continue
+        project = next((pg for pg in pp if any(isinstance(pl, dict) and name in (pl.get("layers") or []) for pl in arr(pg[3].get("plans")))), None)
+        ticked = {}
+        if project:
+            for sid, (done, text) in steps_done(project[3]).items():
+                n = step_number(text)
+                if n:
+                    ticked[n.casefold()] = ticked.get(n.casefold(), True) and done
+        groups = card_groups(plans, [name])
+        left = []
+        for _, n, items in groups:
+            by_city = all(built.get(it.get("name")) == "built" for _, it in items)
+            if not (by_city or ticked.get(n.casefold())):
+                left.append(n)
+        loose = [it.get("name") for kind in ("roads", "junctions", "areas") for it in arr(q.get(kind))
+                 if isinstance(it, dict) and not it.get("existing") and item_points(it) and not step_number(it.get("name"))]
+        if not groups and not loose:
+            continue
+        if not groups:
+            left = [x for x in loose if built.get(x) != "built"]
+        if left:
+            lines_plans.append(f"{name} stays Now: step{'s' if len(left) != 1 else ''} {', '.join(left)} left"
+                               + (f" ({len(groups) - len(left)} done)" if groups and len(groups) > len(left) else "") + ".")
+            continue
+        new = "Done · " + name.split(" · ", 1)[1]
+        renames[name] = new
+        q["name"] = new
+        lines_plans.append(f"{name} → {new}: every step built or ticked" + (f" ({', '.join(n for _, n, _ in groups)})" if groups else "") + ".")
+    # 2. Done plans a shipped guide already showed as Done drop out (kept in archive.json)
+    archive = []
+    for q in list(plans):
+        name = q.get("name") or ""
+        if status_of(name) == "Done" and name not in renames.values() and name in shown:
+            plans.remove(q)
+            dropped.add(name)
+            archive.append(q)
+            lines_plans.append(f"{name} dropped: {newest[1].name[:-len('.cityplan.json')]} showed it as Done (kept in archive.json beside the plan file).")
+    # 3. Next becomes Now only on the Mayor's word
+    promote = opt("--promote")
+    if promote:
+        q = next((x for x in plans if x.get("name") == promote), None)
+        if q is None or status_of(promote) != "Next":
+            raise SystemExit(f"--promote names a Next plan of the file: {', '.join(x.get('name') for x in plans if status_of(x.get('name')) == 'Next') or 'there is none'}")
+        q["name"] = "Now · " + promote.split(" · ", 1)[1]
+        renames[promote] = q["name"]
+        lines_plans.append(f"{promote} → {q['name']} (--promote).")
+    elif not any(status_of(x.get("name")) == "Now" for x in plans):
+        nxt = [x.get("name") for x in plans if status_of(x.get("name")) == "Next"]
+        if nxt:
+            lines_plans.append("Nothing is Now any more: ask the Mayor which comes next, then `--promote` it: "
+                               + ", ".join(f'"{n}"' for n in nxt) + ".")
+    # 4. the projects: links follow the renames, finished ones close, old closed ones go to projects/archive/
+    date = time.strftime("%Y-%m-%d %H:%M")
+    reports = sorted(f.stem for f in (srcp / "reports").glob("*.md")) if (srcp / "reports").is_dir() else []
+    current = (srcp / "briefing.md").read_text(encoding="utf-8") if (srcp / "briefing.md").exists() else ""
+    writes, moves = [], []
+    for pg in pp:
+        f, front, body, meta = pg
+        pid = str(meta.get("id") or f.stem)
+        new_front = layer_rewrite(front, renames, dropped) if (renames or dropped) else front
+        status, by_mayor = journal.mayor_status(stat, built_j.get(pid) or {"status": meta.get("status")})
+        done = steps_done(meta)
+        links = [n for pl in arr(meta.get("plans")) if isinstance(pl, dict) for n in (pl.get("layers") or [])]
+        live = [n for n in links if status_of(renames.get(n, n)) in ("Now", "Next") and n not in dropped]
+        if status in ("active", "next") and done and all(d for d, _ in done.values()) and not live:
+            why = f"All {len(done)} steps done" + (f"; its plan {', '.join(renames.get(n, n) for n in links if n not in dropped)} is Done" if links else "")
+            new_front = close_front(new_front, why + ". Closed by the move-on step (plan.py advance).", date)
+            lines_projects.append(f"{f.name}: all {len(done)} steps done → Done, with a log line.")
+        elif new_front != front:
+            gone = [n for n in links if n in dropped]
+            lines_projects.append(f"{f.name}: " + (f"its link to {', '.join(gone)} (dropped) is gone" if gone and not any(n in renames for n in links)
+                                                   else "its plan links follow the renames") + ".")
+        if new_front != front:
+            writes.append((f, "+++\n" + new_front + body))
+        if status == "done":
+            since = str((built_j.get(pid) or {}).get("statusChanged") or "")[:10]
+            if by_mayor:
+                since = str(arr_dict(stat.get(pid)).get("at") or since)[:10]
+            if not since:   # done from its first build: its newest log line, else the file's date
+                logs = [str(x.get("date") or "") for x in arr(meta.get("log")) if isinstance(x, dict)]
+                since = max(logs, default="")[:10] or time.strftime("%Y-%m-%d", time.localtime(f.stat().st_mtime))
+            after = [r for r in reports if since and r[:10] > since]
+            if len(after) >= keep_done and not re.search(r'^\s*project\s*=\s*"' + re.escape(pid) + '"', current, re.M):
+                moves.append(f)
+                lines_projects.append(f"{f.name} → projects/archive/: Done since {since}, {len(after)} reports since "
+                                      "(its id stays known, so older briefings still build).")
+    # write
+    if not dry:
+        if renames or dropped:
+            backup = Path(plan_path).with_name(Path(plan_path).name + time.strftime(".bak-%Y%m%d-%H%M%S"))
+            shutil.copy2(plan_path, backup)
+            if isinstance(raw.get("plans"), list):
+                raw["plans"] = plans
+            tmp = Path(plan_path).with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
+            os.replace(tmp, plan_path)
+        if archive:
+            ap = Path(plan_path).with_name("archive.json")
+            old = json.loads(ap.read_text(encoding="utf-8")) if ap.exists() else {"plans": []}
+            old.setdefault("plans", [])
+            old["plans"] += [dict(q, archived=date) for q in archive]
+            ap.write_text(json.dumps(old, ensure_ascii=False, indent=1), encoding="utf-8")
+        for f, text in writes:
+            tmp = f.with_suffix(".md.tmp")
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, f)
+        for f in moves:
+            (srcp / "projects" / "archive").mkdir(exist_ok=True)
+            os.replace(f, srcp / "projects" / "archive" / f.name)
+    built_ok, build_out = True, ""
+    if not dry and (writes or moves):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = journal.cmd_build(srcp)
+        built_ok, build_out = code == 0, out.getvalue().strip()
+    print(f"# {'Would move on' if dry else 'Moved on'}: {city_name} ({Path(plan_path).name})\n")
+    print("## Plans\n")
+    print("\n".join(f"- {x}" for x in lines_plans) if lines_plans else "Nothing to move: no Now plan is finished and no Done plan has had its round.")
+    print("\n## Projects\n")
+    print("\n".join(f"- {x}" for x in lines_projects) if lines_projects else "Nothing to change.")
+    if not dry and (writes or moves):
+        print("\nJournal: " + ("built." if built_ok else "NOT built:\n" + build_out))
+    if renames or dropped:
+        print(f"\nNext: `plan.py ship {Path(plan_path).name} <city>/journal` for the next guide (its Done plans for the Mayor to compare).")
+    return 0 if built_ok else 1
+
+
+def arr_dict(v):
+    return v if isinstance(v, dict) else {}
 
 
 def main_cards(snap, plans, rest, opt):

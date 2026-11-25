@@ -20,7 +20,9 @@ needs attention is a task), `jp build`, and hand over.
 **Report:** (1) `report.py <city>/journal --draft` (both sides of the journal, the city's facts with what needs
 attention, what the Mayor drew in the planner, the pictures, and `reports/<date>.md` written as a draft). (2) Fill every `TODO:` (the summary, an answer
 to every note and wrap-up answer, what you see, from What needs attention, at most two decisions) and keep five to seven numbers. (3) Tick the project steps its "Built as
-planned" names. (4) `jp archive`, the next briefing from the plan you have, `jp build`, `jp ack`, `city.py keep`.
+planned" names. (4) `plan.py advance plan.json <city>/journal` (built Now plans to Done, last round's Done out, finished
+projects closed; Next to Now only with `--promote`, on the Mayor's word), `jp archive`, the next briefing from the plan
+you have, `jp build`, `jp ack`, `city.py keep`.
 (5) Send the debrief. (6) Only then, and only on a yes: the next streets (`plan.py grid`, then `plan.py ship`: the
 guide, the build cards and the journal in one run).
 

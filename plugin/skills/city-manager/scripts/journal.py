@@ -230,6 +230,12 @@ def load_source(src):
     for single in ("city", "briefing"):
         p = src / f"{single}.md"
         pages[single] = (p, *read_page(p, problems)) if p.exists() else None
+    # finished projects moved to projects/archive/ (plan.py advance): not in the journal any more, but their ids stay
+    # known, so older briefings that name them still build
+    pages["archived"] = set()
+    for p in sorted((src / "projects" / "archive").glob("*.md")) if (src / "projects" / "archive").is_dir() else []:
+        meta, _ = read_page(p, Problems())
+        pages["archived"].add(str(meta.get("id") or p.stem))
     return src, cfg, pages, problems
 
 
@@ -362,7 +368,7 @@ def compile_journal(cfg, pages, problems, previous, stamps):
                     problems.add(where, f"duplicate task id {tid}")
                 tids.add(tid)
                 proj = f.text(t, "project")
-                if proj and proj not in project_ids:
+                if proj and proj not in project_ids and proj not in pages.get("archived", ()):
                     problems.add(where, f"task {tid} names unknown project {proj!r}")
                 done = f.flag(t, "done")
                 tasks.append({"id": tid, "text": f.text(t, "text"), "project": proj, "note": f.text(t, "note"), "done": done,

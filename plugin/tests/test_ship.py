@@ -322,5 +322,86 @@ class Drawings(Base):
         self.assertIn("- In the planner: no planner document for this city yet.", out)
 
 
+
+class Advance(Base):
+    """plan.py advance, the move-on step: after the first ship, Main Street (step 1) is built and the Mayor ticks step 2."""
+
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(self.ship()[0], 0)
+        (self.root / "riverton/mayor.json").write_text(json.dumps({"ticks": {"p:streets/c-2": {"done": True, "at": "2099-01-01T00:00:00Z"}}}),
+                                                     encoding="utf-8")
+
+    def advance(self, *extra):
+        r = subprocess.run([sys.executable, "-I", str(PLAN), "advance", str(self.plan_path), str(self.src), *map(str, extra)],
+                           capture_output=True, text=True, encoding="utf-8", env=self.env, timeout=180)
+        return r.returncode, r.stdout + r.stderr
+
+    def names(self):
+        return [p["name"] for p in json.loads(self.plan_path.read_text(encoding="utf-8"))["plans"]]
+
+    def test_a_finished_plan_moves_to_done_and_its_project_closes(self):
+        code, out = self.advance("--dry-run")
+        self.assertIn("# Would move on: Riverton", out)
+        self.assertEqual(self.names(), ["Now · Streets", "Next · Homes", "Later · Far off", "Base · Roads"], "a dry run writes nothing")
+        code, out = self.advance()
+        self.assertEqual(code, 0, out)
+        self.assertIn("- Now · Streets → Done · Streets: every step built or ticked (1, 2).", out)
+        self.assertIn('Nothing is Now any more: ask the Mayor which comes next, then `--promote` it: "Next · Homes".', out)
+        self.assertIn("- streets.md: all 3 steps done → Done, with a log line.", out)
+        self.assertEqual(self.names(), ["Done · Streets", "Next · Homes", "Later · Far off", "Base · Roads"], "Next waits for the Mayor")
+        meta, _ = self.page("streets.md")
+        self.assertEqual(meta["status"], "done")
+        self.assertEqual(meta["plans"][0]["layers"], ["Done · Streets"], "the project's link follows the rename")
+        self.assertIn("Closed by the move-on step", meta["log"][-1]["text"])
+        self.assertTrue(list(self.base.glob("plan.json.bak-*")))
+        self.assertIn("Journal: built.", out)
+
+    def test_a_plan_with_steps_left_stays_now(self):
+        (self.root / "riverton/mayor.json").unlink()
+        code, out = self.advance()
+        self.assertIn("- Now · Streets stays Now: step 2 left (1 done).", out)
+        self.assertEqual(self.names()[0], "Now · Streets")
+        self.assertEqual(self.page("streets.md")[0]["status"], "active")
+
+    def test_promote_and_drop_done_after_its_round(self):
+        self.advance()
+        self.assertEqual(self.ship()[0], 0, "Riverton 3 shows Done · Streets")
+        code, out = self.advance("--promote", "Next · Homes")
+        self.assertEqual(code, 0, out)
+        self.assertIn("- Done · Streets dropped: Riverton 3 showed it as Done (kept in archive.json beside the plan file).", out)
+        self.assertIn("- Next · Homes → Now · Homes (--promote).", out)
+        self.assertEqual(self.names(), ["Now · Homes", "Later · Far off", "Base · Roads"])
+        self.assertEqual(json.loads((self.base / "archive.json").read_text(encoding="utf-8"))["plans"][0]["name"], "Done · Streets")
+        self.assertEqual(self.page("homes.md")[0]["plans"][0]["layers"], ["Now · Homes"])
+        meta, _ = self.page("streets.md")
+        self.assertNotIn("plans", meta, "a link whose layers all dropped out goes")
+        self.assertIn("- streets.md: its link to Done · Streets (dropped) is gone.", out)
+        code, out = self.advance("--promote", "Later · Far off")
+        self.assertNotEqual(code, 0)
+
+    def test_old_done_projects_go_to_the_archive(self):
+        (self.src / "projects/old.md").write_text('+++\nid = "old"\ntitle = "Old works"\nstatus = "done"\n\n[[log]]\ndate = "2026-11-01 10:00"\n'
+                                                  'text = "Finished."\n+++\n', encoding="utf-8")
+        (self.src / "briefings").mkdir(exist_ok=True)
+        (self.src / "briefings/2026-11-02.md").write_text('+++\nid = "2026-11-02"\ntitle = "Old briefing"\n\n[[tasks]]\nid = "t1"\n'
+                                                          'text = "Look at the works"\nproject = "old"\n+++\n', encoding="utf-8")
+        (self.src / "reports").mkdir(exist_ok=True)
+        for d in ("2026-11-20", "2026-11-21"):
+            (self.src / f"reports/{d}.md").write_text(f'+++\nid = "{d}"\ntitle = "Report"\n+++\nA session.\n', encoding="utf-8")
+        code, out = self.advance()
+        self.assertTrue((self.src / "projects/old.md").exists(), "two reports since: kept")
+        (self.src / "reports/2026-11-22.md").write_text('+++\nid = "2026-11-22"\ntitle = "Report"\n+++\nA session.\n', encoding="utf-8")
+        code, out = self.advance("--keep-done", "5")
+        self.assertTrue((self.src / "projects/old.md").exists(), "--keep-done 5")
+        code, out = self.advance()
+        self.assertEqual(code, 0, out)
+        self.assertIn("- old.md → projects/archive/: Done since 2026-11-01, 3 reports since", out)
+        self.assertTrue((self.src / "projects/archive/old.md").exists())
+        self.assertIn("Journal: built.", out, "the old briefing that names it still builds")
+        journal = json.loads((self.root / "riverton/journal.json").read_text(encoding="utf-8"))
+        self.assertNotIn("old", [p["id"] for p in journal["projects"]], "the panel no longer lists it")
+
+
 if __name__ == "__main__":
     unittest.main()

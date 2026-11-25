@@ -86,3 +86,11 @@ choice wins, and the next guide follows what's really there.
 
 When the Mayor builds a Now plan, it becomes Done in the next guide (one round), a Next plan may become Now, and the
 number goes up. Rename only the status and keep the topic, so the journal's words stay the same.
+
+`plan.py advance plan.json <city>/journal` does it after each report: a Now plan whose every step is built (the
+snapshot) or ticked (the journal) becomes Done; a Done plan the newest guide already showed drops out (saved in
+`archive.json` beside the plan file); a Next plan becomes Now only with `--promote "Next · <Topic>"`, because which
+comes next is the Mayor's call (it says so when nothing is Now). The projects follow: their plan links take the new
+names, a project whose steps are all done and whose plans are Done closes with a log line, and a project Done for
+three reports moves to `projects/archive/`, which the panel doesn't list (older briefings that name it still build).
+The plan file is backed up first. Then `plan.py ship` for the next guide.
