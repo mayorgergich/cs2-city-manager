@@ -36,6 +36,26 @@ usage:
       number, like "2 Cedar: ramp down"; others get none), for its build card, and the journal lines to go with each:
       the step's picture and Show-on-map place.
 
+  plan.py frame <src> "<street>" [--part N]
+      A street as a frame for places: its parts (one name can cover several roads; each part runs straight on through
+      its junctions), which end is 0 and which side is left, and what's along it at how many metres (the streets that
+      join or cross, the map's edge, open ends), with its pieces. Places then read "<street>@<m along>[+|-<m left>]",
+      "<street>/<part>@…" or "<street> x <street>" (frame.py), instead of x and z.
+
+  plan.py road PLAN.json <src> --plan "<Status> · <Topic>" --name "<N> <words>" [--piece "<menu name>"] [--class C]
+               [--tunnel] [--bridge] (--through PLACE PLACE… | --along STREET --from S --to S [--offset T] |
+               --off STREET --at S --side left|right --length L [--angle A]) [--to-street STREET]
+  plan.py zone PLAN.json <src> --plan … --name … --type Residential|Commercial|Industrial|Office|Custom
+               (--along STREET --from S --to S --side left|right [--depth 48] [--gap G] | --polygon PLACE PLACE PLACE…)
+  plan.py junction PLAN.json <src> --plan … --name … --type Normal|Roundabout|Interchange|… [--piece …]
+               --at "<street> x <street>" | --at PLACE --roads ROAD ROAD
+      Write one item into the plan file (replacing one of the same name) from places along streets: a road through
+      places, beside a street (--along, --offset metres to its left), or off it at a right angle (or --angle degrees),
+      optionally on to the nearest point of another street; a zoning band along a street's side (from 1 m off its
+      edge, 48 m = six cells deep by default) or a polygon of places; a junction marker where two streets meet (they
+      go into the plan as existing roads). Offsets follow the street's own direction where it is, so on a bend a big
+      offset swings with it: say a place from the nearest street. Then `plan.py check`.
+
   plan.py grid PLAN.json <src> --along "<street>" --side left|right --rows N [--start S] [--length L]
                [--piece "Two-Lane Road"] [--ends both|start|end|none] [--block B] [--zone TYPE]
                [--plan "Now · <Topic>"] [--number N] [--name WORDS] [--from X,Z]
@@ -1215,7 +1235,11 @@ def main(argv):
         rest_ = args[2:]
         return main_drawings(args[1], rest_, lambda flag, default=None: rest_[rest_.index(flag) + 1]
                              if flag in rest_ and rest_.index(flag) + 1 < len(rest_) else default)
-    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid", "ship"):
+    if len(args) >= 3 and args[0] == "frame":
+        rest_ = args[3:]
+        return main_frame(args[1], args[2], rest_, lambda flag, default=None: rest_[rest_.index(flag) + 1]
+                          if flag in rest_ and rest_.index(flag) + 1 < len(rest_) else default)
+    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid", "ship", "road", "zone", "junction"):
         print(__doc__)
         return 2
     cmd, plan_path, src = args[0], args[1], args[2]
@@ -1228,6 +1252,8 @@ def main(argv):
         return main_ship(plan_path, src, rest, opt)
     if cmd == "grid":
         return main_grid(plan_path, city.load(sv.snapshot_file(src)), rest, opt)
+    if cmd in ("road", "zone", "junction"):
+        return {"road": main_road, "zone": main_zone, "junction": main_junction}[cmd](plan_path, city.load(sv.snapshot_file(src)), rest, opt)
     if cmd in ("built", "cards"):
         path = sv.snapshot_file(src, "--start" in rest)
         snap = city.load(path)
@@ -1353,6 +1379,12 @@ def make_grid(origin, u, length, spine_w, side, rows, start=0.0, along=None, pie
 
 def add_to_plan(path, plan_name, roads, area=None):
     """Puts items into a plan of the file (made if missing), replacing items of the same name."""
+    return add_items(path, plan_name, roads=roads, areas=[area] if area else [])
+
+
+def add_items(path, plan_name, roads=(), areas=(), junctions=()):
+    """Puts roads, areas and junctions into a plan of the file (made if missing, on top), replacing items of the same
+    name; atomic."""
     p = Path(path)
     doc = json.loads(p.read_text(encoding="utf-8-sig")) if p.exists() else {"plans": []}
     if not isinstance(doc, dict) or not isinstance(doc.get("plans"), list):
@@ -1361,15 +1393,243 @@ def add_to_plan(path, plan_name, roads, area=None):
     if target is None:
         target = {"name": plan_name, "roads": [], "areas": [], "junctions": []}
         doc["plans"].insert(0, target)
-    names = {r["name"] for r in roads} | ({area["name"]} if area else set())
-    target["roads"] = [r for r in arr(target.get("roads")) if not (isinstance(r, dict) and r.get("name") in names)] + roads
-    if area:
-        target["areas"] = [a for a in arr(target.get("areas")) if not (isinstance(a, dict) and a.get("name") in names)] + [area]
-    target.setdefault("junctions", [])
+    for kind, items in (("roads", list(roads)), ("areas", list(areas)), ("junctions", list(junctions))):
+        names = {it["name"] for it in items}
+        target[kind] = [x for x in arr(target.get(kind)) if not (isinstance(x, dict) and x.get("name") in names)] + items
     tmp = p.with_name(p.name + ".tmp")
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, p)
     return target
+
+
+# --- the street frame: places said along streets (frame.py), and builders that write plan items from them
+
+def values(rest, flag):
+    """The values after a flag, up to the next --flag."""
+    if flag not in rest:
+        return []
+    out = []
+    for a in rest[rest.index(flag) + 1:]:
+        if a.startswith("--"):
+            break
+        out.append(a)
+    return out
+
+
+def road_class_of(edges):
+    if any(e.get("kind") == "highway" for e in edges):
+        return "Highway"
+    lanes = max((sum(arr(e.get("lanes"))) for e in edges if len(arr(e.get("lanes"))) == 2), default=2)
+    return "Arterial" if lanes >= 6 else "Collector" if lanes >= 4 else "Local"
+
+
+def main_frame(src, street, rest, opt):
+    """plan.py frame <src> "<street>": the street as a frame for places, with what's along it."""
+    import frame
+    snap = city.load(sv.snapshot_file(src))
+    st = frame.Streets(snap)
+    name = st.find(street)
+    parts = st.parts(name)
+    only = int(opt("--part")) if opt("--part") else None
+    part_of = {e.get("id"): p.index for p in parts for e in p.edges}
+    inc = st.net.incident()
+    print(f"# {name}: {len(parts)} part{'s' if len(parts) != 1 else ''}\n")
+    print("A street name can cover several roads; each part runs straight on through its junctions. Places on a part:\n"
+          f"`{name}@<metres along>` (negative: from the far end; `start`, `mid`, `end`), then `+<metres>` to its left or "
+          f"`-<metres>` to its right; `{name}/2@…` for part 2; `{name} x <street>` where two streets meet.\n")
+    for p in parts:
+        if only and p.index != only:
+            continue
+        ref = name if p.index == 1 else f"{name}/{p.index}"
+        x0, z0 = p.pts[0]
+        print(f"## Part {p.index} (`{ref}@…`): {city.km(p.length)}, {p.heading_word()}\n")
+        print(f"Starts at its {p.start_word()} end (x {x0:.0f}, z {z0:.0f}); left is {p.left_word()}.\n")
+        print("| Along | What's there |\n|---|---|")
+        mine = {e.get("id") for e in p.edges}
+        for s, node in p.joints:
+            n = st.net.nodes.get(node) or {}
+            others = defaultdict(set)
+            for e in inc.get(node, []):
+                if e.get("id") in mine or e.get("kind") not in ("road", "highway", "train", "tram", "subway"):
+                    continue
+                line = e.get("line") or []
+                if len(line) < 2:
+                    continue
+                away = line[min(2, len(line) - 1)] if e.get("a") == node else line[max(-3, -len(line))]
+                _, t, _ = p.project(*away)
+                side = "left" if t > 2 else "right" if t < -2 else "ahead"
+                label = e.get("streetName") or e.get("title") or e.get("kind")
+                if e.get("streetName") == name and part_of.get(e.get("id")):
+                    label = f"{name} (part {part_of[e['id']]})"
+                elif e.get("kind") in ("train", "tram", "subway"):
+                    label = f"{label} ({e['kind']})"
+                others[label].add(side)
+            what = []
+            for label, sides in sorted(others.items()):
+                if sides >= {"left", "right"}:
+                    where = "across"
+                else:
+                    sd = next(iter(sides))
+                    where = f"to the {sd} ({p.left_word(s) if sd == 'left' else sv.direction(*[-v for v in sv_left(p, s)])})" if sd != "ahead" else "straight on"
+                what.append(f"{label}, {where}")
+            is_end = s in (p.joints[0][0], p.joints[-1][0])
+            if n.get("outside"):
+                what.insert(0, "leaves the map")
+            elif is_end and not what:
+                what.append("the end: open (nothing joins)")
+            elif is_end:
+                what[0] = "the end: " + what[0]
+            if what:
+                print(f"| {s:,.0f} | {'; '.join(what)} |")
+        print()
+        runs = []
+        for i, e in enumerate(p.edges):
+            a, b = p.joints[i][0], p.joints[i + 1][0] if i + 1 < len(p.joints) else p.length
+            key = (e.get("title") or "?", city.lanes_text(e), "tunnel" if e.get("tunnel") else "bridge" if e.get("bridge") else "")
+            if runs and runs[-1][0] == key:
+                runs[-1][2] = b
+            else:
+                runs.append([key, a, b])
+        print("Pieces: " + "; ".join(f"{a:,.0f}–{b:,.0f} {k[0]} ({k[1]})" + (f", {k[2]}" if k[2] else "") for k, a, b in runs) + ".\n")
+    return 0
+
+
+def sv_left(p, s):
+    _, _, ux, uz = p.at(min(max(s, 0.0), p.length))
+    return (-uz, ux)
+
+
+def builder_common(rest, opt):
+    plan_name, name = opt("--plan"), opt("--name")
+    if not plan_name or not name:
+        raise SystemExit("needs --plan \"<Status> · <Topic>\" and --name \"<number> <words>\"")
+    if status_of(plan_name) in ("Now", "Next") and not step_number(name):
+        print(f"Note: {name!r} has no step number, so it gets no build card (`<number> <words>`, guides.md).")
+    return plan_name, name
+
+
+def main_road(plan_path, snap, rest, opt):
+    """plan.py road: one road from places along streets."""
+    import frame
+    plan_name, name = builder_common(rest, opt)
+    st = frame.Streets(snap)
+    if opt("--along"):
+        p = st.part(*split_part(opt("--along")))
+        pts = p.line(p.s_of(opt("--from", "start")), p.s_of(opt("--to", "end")), float(opt("--offset", 0)))
+        how = f"along {opt('--along')} from {opt('--from', 'start')} to {opt('--to', 'end')}, {opt('--offset', 0)} m to its left"
+    elif opt("--off"):
+        p = st.part(*split_part(opt("--off")))
+        s0 = p.s_of(opt("--at", "start"))
+        side = opt("--side", "left")
+        if side not in ("left", "right"):
+            raise SystemExit("--side is left or right")
+        L, ang = float(opt("--length", 200)), math.radians(float(opt("--angle", 90)))
+        x, z, ux, uz = p.at(s0)
+        nx, nz = (-uz, ux) if side == "left" else (uz, -ux)
+        dx, dz = math.cos(ang) * ux + math.sin(ang) * nx, math.cos(ang) * uz + math.sin(ang) * nz
+        pts = [(x, z), (x + L * dx, z + L * dz)]
+        how = f"off {opt('--off')} at {opt('--at', 'start')} m to its {side}, {L:,.0f} m"
+    else:
+        specs = values(rest, "--through")
+        if len(specs) < 2 and not (specs and opt("--to-street")):
+            raise SystemExit("a road needs --through PLACE PLACE…, --along STREET --from S --to S [--offset T], or "
+                             "--off STREET --at S --side left|right --length L (places: frame.py)")
+        pts = [st.place(x) for x in specs]
+        how = "through " + ", ".join(specs)
+    if opt("--to-street"):
+        last = pts[-1]
+        best = min(((q.project(*last), q) for q in st.parts(opt("--to-street"))), key=lambda t: t[0][2])
+        (s1, _, d), q = best
+        pts = pts + [q.point(s1)] if d > 1 else pts
+        how += f", then on to {opt('--to-street')} ({d:,.0f} m)"
+    road = {"name": name, "class": opt("--class", "Local"), "points": [[round(x, 1), round(z, 1)] for x, z in pts]}
+    if opt("--piece"):
+        road["piece"] = opt("--piece")
+    for flag in ("--tunnel", "--bridge"):
+        if flag in rest:
+            road[flag[2:]] = True
+    add_items(plan_path, plan_name, roads=[road])
+    print(f"Added to {plan_name!r} in {Path(plan_path).name}: road {name!r} ({road.get('piece') or road['class']}, "
+          f"{length(pts):,.0f} m), {how}.\nCheck it: plan.py check {Path(plan_path).name} <src>.")
+    return 0
+
+
+def split_part(text):
+    m = re.match(r"^(.*?)(?:\s*/\s*(\d+))?\s*$", text)
+    return m.group(1), m.group(2)
+
+
+def main_zone(plan_path, snap, rest, opt):
+    """plan.py zone: an area, as a band along a street or a polygon of places."""
+    import frame
+    plan_name, name = builder_common(rest, opt)
+    typ = opt("--type", "Custom")
+    if typ not in cityplan.AREA_TYPES:
+        raise SystemExit(f"--type is one of {', '.join(sorted(cityplan.AREA_TYPES))}")
+    st = frame.Streets(snap)
+    if opt("--along"):
+        p = st.part(*split_part(opt("--along")))
+        side = opt("--side", "left")
+        if side not in ("left", "right"):
+            raise SystemExit("--side is left or right")
+        sign = 1.0 if side == "left" else -1.0
+        inner = float(opt("--gap", p.width() / 2 + 1))
+        depth = float(opt("--depth", 48))
+        s0, s1 = p.s_of(opt("--from", "start")), p.s_of(opt("--to", "end"))
+        poly = p.line(s0, s1, sign * inner, step=40.0) + p.line(s1, s0, sign * (inner + depth), step=40.0)
+        how = f"along {opt('--along')} from {opt('--from', 'start')} to {opt('--to', 'end')}, its {side} side, {depth:,.0f} m deep"
+    else:
+        specs = values(rest, "--polygon")
+        if len(specs) < 3:
+            raise SystemExit("an area needs --along STREET --from S --to S --side left|right [--depth 48] or --polygon PLACE PLACE PLACE…")
+        poly = [st.place(x) for x in specs]
+        how = "through " + ", ".join(specs)
+    area = {"name": name, "type": typ, "polygon": [[round(x, 1), round(z, 1)] for x, z in poly]}
+    add_items(plan_path, plan_name, areas=[area])
+    print(f"Added to {plan_name!r} in {Path(plan_path).name}: area {name!r} ({typ}), {how}.\n"
+          f"Check it: plan.py check {Path(plan_path).name} <src>.")
+    return 0
+
+
+def main_junction(plan_path, snap, rest, opt):
+    """plan.py junction: a junction marker where two streets meet, or at a place between two of the plan's roads."""
+    import frame
+    plan_name, name = builder_common(rest, opt)
+    typ = opt("--type", "Normal")
+    if typ not in cityplan.JUNCTION_TYPES:
+        raise SystemExit(f"--type is one of {', '.join(sorted(cityplan.JUNCTION_TYPES))}")
+    st = frame.Streets(snap)
+    at = opt("--at")
+    if not at:
+        raise SystemExit("a junction needs --at \"<street> x <street>\", or --at PLACE --roads ROAD ROAD (two roads of its plan)")
+    x, z = st.place(at)
+    roads = []
+    pair = values(rest, "--roads")
+    if frame.CROSS.search(at) and "@" not in at and not pair:
+        pair = []
+        for street in (q.strip() for q in frame.CROSS.split(at, maxsplit=1)):
+            nm = st.find(street)
+            part = min(st.parts(nm), key=lambda q: q.project(x, z)[2])
+            roads.append({"name": nm, "class": road_class_of(part.edges), "existing": True,
+                          "points": [[round(a, 1), round(b, 1)] for a, b in part.line(0, part.length, step=60.0)]})
+            pair.append(nm)
+    if len(pair) != 2:
+        raise SystemExit("--roads names two roads of the plan (the junction's own)")
+    doc = json.loads(Path(plan_path).read_text(encoding="utf-8-sig")) if Path(plan_path).exists() else {"plans": []}
+    target = next((q for q in arr(doc.get("plans")) if isinstance(q, dict) and q.get("name") == plan_name), {})
+    have = {r.get("name") for r in arr(target.get("roads")) if isinstance(r, dict)}
+    roads = [r for r in roads if r["name"] not in have]
+    missing = [n for n in pair if n not in have and n not in {r["name"] for r in roads}]
+    if missing:
+        raise SystemExit(f"{', '.join(map(repr, missing))} isn't a road of {plan_name!r}: add it first, or use --at \"<street> x <street>\".")
+    j = {"name": name, "type": typ, "position": [round(x, 1), round(z, 1)], "road_a": pair[0], "road_b": pair[1]}
+    if opt("--piece"):
+        j["piece"] = opt("--piece")
+    add_items(plan_path, plan_name, roads=roads, junctions=[j])
+    print(f"Added to {plan_name!r} in {Path(plan_path).name}: junction {name!r} ({j.get('piece') or typ}) at {at}"
+          + (f", with {' and '.join(r['name'] for r in roads)} drawn as existing roads" if roads else "")
+          + f".\nCheck it: plan.py check {Path(plan_path).name} <src>.")
+    return 0
 
 
 def main_grid(plan_path, snap, rest, opt):

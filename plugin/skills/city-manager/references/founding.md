@@ -65,7 +65,7 @@ feel like filling in a form. So:
 
 ## 1. What to prepare
 
-The parts question, then a line that sets the agenda ("The full treatment, then: first, what Napster should feel like.").
+The parts question, then a line that sets the agenda ("The full treatment, then: first, what Riverton should feel like.").
 
 ## 2. What the game already knows (a city that exists)
 

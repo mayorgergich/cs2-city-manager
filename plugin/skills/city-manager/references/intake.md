@@ -30,7 +30,7 @@ Mayor's own packs), `journal.py doctor` (say nothing when it's fine; for a real 
 character and give exact steps, as in § 4) and `journal.py cities` (every city with a City Manager journal: the ones
 set up here, with their snapshot, and journals started in game that aren't set up yet).
 
-- **About to play** or **Just played:** find the city. One city set up and planned: that one, without asking ("Napster,
+- **About to play** or **Just played:** find the city. One city set up and planned: that one, without asking ("Riverton,
   then."). Several: ask which (the city names as options, the active one first). Then the briefing or the report
   (`session-loop.md`). A city that's set up but has no plan yet (no charter, or a charter and no plan in the dossier):
   say so in a line and make the first plan the business of the day (§ 3). No city set up at all: § 3, step 2.
@@ -49,7 +49,7 @@ snapshot yet ("no snapshot yet" in `journal.py cities`), ask the Mayor for exact
 2. Look for it by that name in `journal.py cities`:
    - **a journal for it, with a snapshot:** set it up if it isn't (`journal.py init "<name>" --active` adopts a journal
      started in game, notes and all), then the stage and the mode (§ 4): founding for a new city. Already built up: say
-     so in a line and offer the takeover instead ("Napster already has 3,778 people: shall I take it over as
+     so in a line and offer the takeover instead ("Riverton already has 2,140 people: shall I take it over as
      it stands?");
    - **no journal for it:** ask whether they've made it yet.
      - **Made, no journal:** load it, press Ctrl+J, *Start a new journal for this city* (that takes the first snapshot), save, go back to the main menu, and say so here. Then on as above.
@@ -67,7 +67,7 @@ snapshot yet ("no snapshot yet" in `journal.py cities`), ask the Mayor for exact
      briefing or the report (`session-loop.md`), or the question they have.
    - **Set up but never planned** (no charter, or a charter and no plan in the dossier), or adopted just now:
      `city.py stage`, then the mode (§ 4): founding for a new city, takeover for a built one. A charter already there:
-     read it (`founding.py check`), say in a line what it settles ("Napster's charter is signed: a relaxed commerce
+     read it (`founding.py check`), say in a line what it settles ("Riverton's charter is signed: a relaxed commerce
      town, transit first"), ask only what it leaves open, and pick up where it ends, usually the first plan
      (`founding.md`, § 5).
 2. **No city has a journal yet:** ask "Setting City Manager up in a city you already have?" (**Yes, a city I have** ·
@@ -82,9 +82,9 @@ character with the counts that matter, then the mode as a question:
 
 | Stage | Say | Options |
 |---|---|---|
-| New | "Napster is brand new: the highways are in, nothing else yet." | **Found it properly** (a charter, then the first roads and drafts) · **Just the journal** (§ 6) |
+| New | "Riverton is brand new: the highways are in, nothing else yet." | **Found it properly** (a charter, then the first roads and drafts) · **Just the journal** (§ 6) |
 | Begun | "A start: 320 people and 3 km of road." | **Found it properly from here** (what's there goes into the plan) · **Take it over as it stands** |
-| Established | "Napster has 3,778 people, 45 km of road and two districts." | **Take it over** (a tour, then where it goes next) · **Just the journal** (§ 6) |
+| Established | "Riverton has 2,140 people, 45 km of road and two districts." | **Take it over** (a tour, then where it goes next) · **Just the journal** (§ 6) |
 
 Record `intake = "founding"` or `"takeover"` in `manager/charter.md` (format: `founding.md`), and write the charter as
 you go. Founding mode goes on in `founding.md`, from "What to prepare"; takeover mode is § 5 below.

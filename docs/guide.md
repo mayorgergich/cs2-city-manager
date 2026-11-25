@@ -84,7 +84,7 @@ asks one thing: *what brings you in?*
 - **A new city:** it asks the city's name, finds its journal, and founds it properly.
 - **A city I already have:** it finds the city's journal (or walks you through starting one) and takes it over.
 
-Either way, it says what it sees (*"Napster is brand new: the highways are in, nothing else yet."*) and you agree the
+Either way, it says what it sees (*"Riverton is brand new: the highways are in, nothing else yet."*) and you agree the
 mode together:
 
 | What it finds | Mode | What you get |

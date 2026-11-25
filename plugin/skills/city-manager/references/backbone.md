@@ -39,7 +39,7 @@ Read alongside: `road-hierarchy.md` (which road where), `interchanges.md` (meeti
    - **`detail`** (`outline`/`steps`): how much of the **later** phases to draw: an outline (main roads and districts
      only) or step by step. Either way, **the district the Mayor builds next always gets its local streets** drawn and
      numbered with build cards (rows, end streets, back streets, a works street): a plan of main roads with zoned areas
-     "for your own streets" left a Mayor with nothing to build from (Napster, 25 Nov);
+     "for your own streets" left a Mayor with nothing to build from (the first real session, 25 Nov);
    - **`expand`** (`one`/`several`/`suggest`): one district at a time, several fronts, or let the plan suggest;
    - **`start_hint`**: where the Mayor wants to start, in their words. It matters when every tile is open (unlock map
      tiles), where the survey otherwise takes the 3 × 3 tiles around the map's starter road, or on a map with several
@@ -183,6 +183,25 @@ one way, and let the Mayor choose.
 One JSON file in `cityplan.py`'s simple format (its docstring has every field), with a few keys of your own that
 `plan.py` reads and `cityplan.py` ignores. Places are metres, x east and z north, taken from `survey.json` and the
 snapshot: start new roads exactly on the ends of existing ones (the snapshot's `nodes`).
+
+**Write items with the builders, not coordinates or a script of your own.** `plan.py frame <src> "<street>"` shows a
+street as a frame: which end is 0, which side is left, and at how many metres every other street joins or crosses.
+Then each item is one command, its places said along streets (`"Ivy Street@400-116"`: 400 m along, 116 m to the
+right; `"Ivy Street x Amberwood Street"`):
+
+- a road: `plan.py road plan.json <src> --plan "Now · First streets" --name "8 Back street" --piece "Two-Lane Road"
+  --through "Ivy Street@400" "Ivy Street@400-116" "Ivy Street@752-116"`; or `--along STREET --from S --to S
+  --offset T` beside a street, `--off STREET --at S --side right --length 310` at a right angle, `--to-street` to end
+  on another street;
+- zoning: `plan.py zone … --type Residential --along "Ivy Street" --from 150 --to 890 --side left` (a band from the
+  street's edge, six cells deep), or `--polygon PLACE PLACE PLACE…`;
+- a junction: `plan.py junction … --type Roundabout --piece "Small Roundabout" --at "Ivy Street x Amberwood Street"`;
+- a district's grid: `plan.py grid` (below).
+
+Say a place from the street nearest to it: offsets follow the street's direction where it is, so a big offset on a
+bend swings with it (900 m off a bending street landed 455 m from where a straight line would; said as 164 m along
+the side street, it was within a metre). Write the JSON by hand only for what no builder makes (curving streets on
+hills, a whole-map district outline).
 
 ```json
 {"plans": [
