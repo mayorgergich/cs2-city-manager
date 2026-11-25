@@ -51,10 +51,13 @@ Discord: https://discord.gg/Rtea83Gnb9
 	<Screenshot Value="Properties/Screenshots/3-project.png" />
 	<Screenshot Value="Properties/Screenshots/4-notes.png" />
 	<Tag Value="Code Mod" />
-	<ModVersion Value="0.9.2" />
+	<ModVersion Value="0.9.3" />
 	<GameVersion Value="1.6.*" />
 	<Dependency Id="155935" DisplayName="City Planning Draft" />
 	<ChangeLog>
+0.9.3
+- In planner: a build card's new button shows its plan over your city in City Planning Draft (Construct with Draft, so you build with the game's own tools while it stays drawn) and takes the camera to the spot. Each of a project's planner layers gets a Show button. If the guide isn't imported yet, it tells you to press Import latest file.
+
 0.9.2 (the files for 0.9.1, whose page update went out without them)
 - A journal you start in the game now says what it is (a notebook on its own) and the one command that brings in a City Manager: type /city-manager in Claude Code. Starting a journal takes your city's first snapshot by itself.
 

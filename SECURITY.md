@@ -15,7 +15,8 @@ checked in the source, and "How to check it yourself" at the end shows how.
 - **The city, through the game's own data, read only:** roads and their names, buildings, districts, map tiles, the
   budget, demand, people and jobs, services, problems, transit lines, terrain and water, and the build menus. It uses
   the same game functions as the game's own info panels. It never changes a value, places or removes anything, or
-  pauses or unpauses the game. The one thing it moves is the camera, when you press *Go* on a note you pinned.
+  pauses or unpauses the game. The one thing it moves is the camera, when you press *Go* on a note you pinned or
+  *Show on map* or *In planner* on a step.
 - **Its own folder:** `ModsData/CityManager` in the game's user-data folder:
   - Windows: `%USERPROFILE%\AppData\LocalLow\Colossal Order\Cities Skylines II`
   - Linux: the same folder inside Steam's Proton prefix
@@ -51,6 +52,9 @@ Only inside `ModsData/CityManager`:
 - **Commands for its panel** (tick, note, pick a journal…). Other mods in the same game can call them too, so the mod
   checks every value again: folder names must be plain names of existing journals, text is capped and cleaned, camera
   moves must stay on the map, and so on.
+- **Two commands to City Planning Draft**, only when you press *In planner* or *Show* on a project: it reads that
+  mod's published state to find the plan by name, then asks it to switch to that plan and turn on its Construct with
+  Draft view, the same commands City Planning Draft's own buttons send. It never imports, edits or deletes a plan.
 
 ### What it never does
 

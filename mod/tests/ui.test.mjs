@@ -418,6 +418,45 @@ test("a step's build card: Show on map and Picture under the step, only for what
     assert.equal(text(T.StepTools({ b, ctx, step: { text: "x", picture: "../../etc.png", where: { x: 1, z: 2 } } })), "Show on map");
 });
 
+test("In planner: City Planning Draft shows the step's plan while the Mayor builds, or says why it can't", () => {
+    const state = JSON.stringify({ planningMode: false, document: { map_id: "Riverton", plans: [{ id: "p1", name: "Now · First streets" }, { id: "p2", name: "Base · Roads" }] } });
+    assert.deepEqual(T.plannerPlan(state, "Now · First streets"), { id: "p1" });
+    assert.deepEqual(T.plannerPlan(state, "Next · Harbour"), { why: "missing" });
+    assert.deepEqual(T.plannerPlan("", "x"), { why: "off" }, "without the mod the state stays empty");
+    assert.deepEqual(T.plannerPlan("{not json", "x"), { why: "off" });
+    assert.deepEqual(T.plannerPlan(JSON.stringify({ document: { plans: "no" } }), "x"), { why: "missing" });
+    const calls = [];
+    const api = globalThis.window["cs2/api"];
+    const before = api.trigger;
+    api.trigger = (...args) => calls.push(args);
+    try {
+        const said = T.showInPlanner(state, "Now · First streets", "Riverton 3", { x: 120, z: -40, zoom: 600 });
+        assert.deepEqual(calls, [["CityPlanningDraft", "command", JSON.stringify({ action: "switchPlan", payload: { id: "p1" } })],
+                                 ["CityPlanningDraft", "command", JSON.stringify({ action: "setConstructWithDraft", payload: { value: true } })],
+                                 ["cityManager", "flyTo", 120, -40, 600]]);
+        assert.match(said, /Showing Now · First streets over the city/);
+        calls.length = 0;
+        assert.match(T.showInPlanner(state, "Next · Harbour", "Riverton 3", null), /isn't in the planner yet: open City Planning Draft and press Import latest file \(Riverton 3\)/);
+        assert.match(T.showInPlanner("", "Now · First streets", "", null), /City Planning Draft isn't running/);
+        assert.deepEqual(calls, [], "nothing is sent when the plan isn't there");
+        const b = T.budget();
+        const row = T.StepTools({ b, ctx: CTX, step: { text: "x" }, onPlanner: () => calls.push(["pressed"]), said: "Showing it" });
+        assert.match(text(row), /In plannerShowing it/, "the button, and the planner's answer under it");
+        const button = [];
+        const walk = (n) => { if (n && typeof n === "object") { if (n.props && n.props.onClick && text(n) === "In planner") button.push(n); (n.children || []).forEach(walk); } };
+        walk(render(row));
+        button[0].props.onClick();
+        assert.deepEqual(calls, [["pressed"]]);
+        const j = { projects: [{ id: "fs", title: "First streets", status: "active", plans: [{ kind: "draft", name: "Riverton 3", layers: ["Now · First streets"] }],
+                                 steps: [{ id: "c-1", text: "1 Main link" }] }] };
+        const page = text(h(T.ProjectDetail, { j, mayor: {}, ctx: CTX, id: "fs", onBack: () => {} }));
+        assert.match(page, /Show Now · First streets/);
+        assert.match(page, /1 Main linkIn planner/, "a step gets In planner when its project links a plan");
+    } finally {
+        api.trigger = before;
+    }
+});
+
 test("a journal started in game says what it is and the one step to get a City Manager", () => {
     const fresh = { format: 1, city: "Riverton", manager: "", projects: [], reports: [], briefings: [], replies: {}, images: {} };
     const out = text(h(T.TodayTab, { j: fresh, mayor: {}, ctx: CTX, onOpenProject: () => {} }));

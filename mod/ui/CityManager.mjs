@@ -677,6 +677,11 @@ function ProjectDetail(props) {
     const where = obj(p.where);
     const plans = objs(p.plans), steps = objs(p.steps);
     const notes = mayorNotes(mayor).filter((n) => str(n.project) === id).reverse();
+    const plannerState = api.useValue(planner$);
+    const [said, setSaid] = React.useState(null);   // {key, text}: the planner's answer, under the button pressed
+    const firstDraft = plans.find((pl) => pl.kind === "draft" && arr(pl.layers).length);
+    const stepLayer = firstDraft ? str(arr(firstDraft.layers)[0]) : "";
+    const show = (key, layer, guide, place) => setSaid({ key, text: showInPlanner(plannerState, layer, guide, place) });
     return h("div", null,
         back,
         h("div", { style: C.row },
@@ -697,7 +702,10 @@ function ProjectDetail(props) {
         plans.map((pl, i) => h("div", { key: i, style: C.plan },
             pl.kind === "draft"
                 ? [h("div", { key: "a" }, markup("**Planning Draft:** " + take(b, pl.name))),
-                    arr(pl.layers).length ? h("div", { key: "b", style: C.small }, "Layers: " + take(b, arr(pl.layers).map(str).join(" · "))) : null]
+                    arr(pl.layers).length ? h("div", { key: "b", style: C.small }, "Layers: " + take(b, arr(pl.layers).map(str).join(" · "))) : null,
+                    arr(pl.layers).length ? h("div", { key: "c", style: { ...C.row, marginTop: "4rem" } }, arr(pl.layers, 8).map((layer, k) =>
+                        h("div", { key: k, style: C.miniButton, onClick: () => show("pl" + i, str(layer), str(pl.name), null) }, "Show " + take(b, str(layer), 40)))) : null,
+                    said && said.key === "pl" + i ? h("div", { key: "d", style: C.small }, take(b, said.text, 300)) : null]
                 : h("div", { style: C.b }, (pl.kind === "doc" ? "Doc: " : "") + take(b, pl.title || pl.name)),
             pl.note ? h("div", { style: C.small }, take(b, pl.note)) : null,
             pl.kind === "doc" && pl.url ? h("div", { style: C.small }, "On your phone: " + take(b, pl.url).replace(/^https?:\/\//, "")) : null)),
@@ -706,7 +714,8 @@ function ProjectDetail(props) {
             const key = stepKey(p.id, s.id);
             const isDone = stepDone(mayor, key, s);
             const check = h(Check, { key, done: isDone, text: inline(b, s.text), sub: take(b, s.note), onToggle: () => trigger("tick", key, !isDone) });
-            const tools = StepTools({ b, ctx, step: s });
+            const tools = StepTools({ b, ctx, step: s, said: said && said.key === key ? said.text : null,
+                onPlanner: stepLayer ? (place) => show(key, stepLayer, str(firstDraft.name), place) : null });
             return tools ? h("div", { key }, check, tools) : check;
         }),
         p.body ? h(Markdown, { text: p.body, ctx, b }) : null,
@@ -718,19 +727,52 @@ function ProjectDetail(props) {
         more(b));
 }
 
+// City Planning Draft, the build overlay (another author's mod, Paradox Mods 155935): its panel sends
+// CityPlanningDraft.command, a JSON {action, payload}, and listens to CityPlanningDraft.state, a JSON string whose
+// document.plans have an id and a name. Read from its code (1.2.x): switchPlan {id} makes a plan the active one, and
+// setConstructWithDraft {value: true} keeps it drawn over the city while the Mayor builds with the game's own tools
+// (it turns the planner's drawing mode off). Without the mod the state stays "" and the buttons say so.
+const PLANNER = "CityPlanningDraft";
+const planner$ = api.bindValue(PLANNER, "state", "");
+const plannerCommand = (action, payload) => api.trigger(PLANNER, "command", JSON.stringify({ action, payload: payload || {} }));
+
+/** The planner's plan of that name: {id}, or {why: "off"} (the planner isn't running) or {why: "missing"}. */
+function plannerPlan(state, layer) {
+    if (typeof state !== "string" || !state) return { why: "off" };
+    let s;
+    try { s = JSON.parse(state); } catch (e) { return { why: "off" }; }
+    const doc = obj(s) && obj(s.document);
+    const p = (doc ? objs(doc.plans, 500) : []).find((x) => str(x.id) && str(x.name) === str(layer));
+    return p ? { id: str(p.id) } : { why: "missing" };
+}
+
+/** Shows a plan of the guide over the city (and flies to the step's place): the line to tell the Mayor. */
+function showInPlanner(state, layer, guide, where) {
+    const r = plannerPlan(state, layer);
+    if (r.why === "off") return "City Planning Draft isn't running. It's the build overlay the guides use (Paradox Mods, by nooolan).";
+    if (r.why === "missing") return `${layer} isn't in the planner yet: open City Planning Draft and press Import latest file` + (guide ? ` (${guide}).` : ".");
+    plannerCommand("switchPlan", { id: r.id });
+    plannerCommand("setConstructWithDraft", { value: true });
+    if (where && Number.isFinite(Number(where.x)) && Number.isFinite(Number(where.z))) trigger("flyTo", Number(where.x), Number(where.z), Number(where.zoom) || 0);
+    return `Showing ${layer} over the city while you build (City Planning Draft's Construct with Draft: turn it off there).`;
+}
+
 // A step's build card: Show on map flies the camera to its place, Picture opens its close-up in the viewer (the picture
-// isn't drawn on the page, so it costs the page's picture budget nothing until it's opened).
+// isn't drawn on the page, so it costs the page's picture budget nothing until it's opened), In planner shows its plan
+// over the city in City Planning Draft.
 function StepTools(props) {
-    const { b, ctx, step } = props;
+    const { b, ctx, step, onPlanner, said } = props;
     const where = obj(step.where);
     const pic = str(step.picture);
     const size = PICTURE_NAME.test(pic) ? own(ctx.sizes, pic) : undefined;
     const hasPic = Array.isArray(size) && size[0] > 0 && size[1] > 0;
     const placed = where && Number.isFinite(Number(where.x)) && Number.isFinite(Number(where.z));
-    if (!placed && !hasPic) return null;
-    return h("div", { style: C.stepTools },
+    if (!placed && !hasPic && !onPlanner) return null;
+    const row = h("div", { style: C.stepTools },
         placed ? h("div", { style: C.miniButton, onClick: () => trigger("flyTo", Number(where.x), Number(where.z), Number(where.zoom) || 0) }, "Show on map") : null,
-        hasPic ? h("div", { style: C.miniButton, onClick: () => ctx.zoom({ src: ctx.base + pic, size, caption: take(b, step.text, 200) }) }, "Picture") : null);
+        hasPic ? h("div", { style: C.miniButton, onClick: () => ctx.zoom({ src: ctx.base + pic, size, caption: take(b, step.text, 200) }) }, "Picture") : null,
+        onPlanner ? h("div", { style: C.miniButton, onClick: () => onPlanner(placed ? where : null) }, "In planner") : null);
+    return said ? h("div", null, row, h("div", { style: { ...C.small, marginLeft: "26rem" } }, take(b, said, 300))) : row;
 }
 
 function ReportsTab(props) {
@@ -1032,5 +1074,6 @@ const hasCSS = false;
 // For the offline tests (tests/ui.test.mjs); the game only uses the default export.
 const __test = { markup, take, budget, Markdown, Table, Picture, stepDone, projectStatus, newer, parse, arr, objs, own, when, wrapUpId, tabPage,
     TodayTab, ProjectList, ProjectDetail, NotesTab, WrapUpTab, CityTab, SnapshotRow, SessionSummary, sessionLines, digits, ReportsTab,
-    WIN, fitLayout, dragged, panelStyle, screenKey, ResizeHandles, Panel, LIMIT, PICTURE_NAME, Guard, Chooser, textScaled, fontScale, StepTools };
+    WIN, fitLayout, dragged, panelStyle, screenKey, ResizeHandles, Panel, LIMIT, PICTURE_NAME, Guard, Chooser, textScaled, fontScale, StepTools,
+    plannerPlan, showInPlanner };
 export { hasCSS, __test, register as default };
