@@ -3,6 +3,9 @@
   "owner": {
     "name": "mayorgergich"
   },
+  "metadata": {
+    "description": "City Manager for Cities: Skylines II: a Claude Code plugin that plans your city between play sessions, with an in-game journal mod."
+  },
   "plugins": [
     {
       "name": "city-manager",

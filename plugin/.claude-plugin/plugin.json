@@ -1,8 +1,11 @@
 {
   "name": "city-manager",
-  "version": "0.5.0",
+  "version": "0.8.0",
   "description": "City Manager for Cities: Skylines II. You play, it plans: a briefing before you play, your list and notes in the game's City Manager mod while you play (no AI running), and a report, the next briefing and a build-overlay guide for City Planning Draft after.",
   "author": {
     "name": "mayorgergich"
-  }
+  },
+  "homepage": "https://github.com/mayorgergich/cs2-city-manager",
+  "repository": "https://github.com/mayorgergich/cs2-city-manager",
+  "license": "MIT"
 }

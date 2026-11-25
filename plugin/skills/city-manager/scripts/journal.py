@@ -41,6 +41,12 @@ Commands:
   journal.py archive <src>     move briefing.md to briefings/<its id>.md before writing the next briefing
   journal.py where [city]      the folders: the City Manager's data (cities.toml), the city's own folder and journal
                                source, the game's journals folder and the planner's exports
+  journal.py doctor            checks the setup: Python and Pillow, the game's data folder, the City Manager mod, City
+                               Planning Draft, the journals and their snapshots, the cities set up
+  journal.py init ["City name"] [--id ID] [--folder DIR]
+                               first-run setup for a city, in one go: its folder, manager.toml, a dossier to fill in,
+                               a journal source with a welcome briefing, and the journal itself in the game's folder.
+                               Adopts a journal the Mayor started in game. With no name, adopts the one such journal.
 
 Environment: CITY_MANAGER_ROOT (default <game user data>/ModsData/CityManager), CS2_USERDATA (the game's user-data
 folder; default: Windows' own place, or Steam's Proton prefix on Linux), CITY_MANAGER_HOME (the City Manager's own data:
@@ -744,6 +750,220 @@ def cmd_where(name=None):
     return 0
 
 
+def mod_slug(name):
+    """The folder name the mod picks for a city (JournalStore.Slug): lower case, every non-letter or digit a dash."""
+    out = "".join(ch if ch.isalnum() else "-" for ch in str(name).strip().lower())
+    while "--" in out:
+        out = out.replace("--", "-")
+    return out.strip("-")
+
+
+def journal_id_for(name):
+    """A journal id for a city name: the mod's own folder name when it's plain letters and digits, otherwise the same
+    without accents (cities.json then maps the real name to it, so the mod still finds it)."""
+    import unicodedata
+    slug = mod_slug(name)
+    if JOURNAL_ID.fullmatch(slug):
+        return slug
+    plain = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
+    slug = mod_slug(plain)[:64].strip("-")
+    return slug if JOURNAL_ID.fullmatch(slug) else "city-" + hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:8]
+
+
+def toml_str(s):
+    """A TOML basic string (JSON's escapes are valid TOML ones)."""
+    return json.dumps(str(s), ensure_ascii=False)
+
+
+def load_registry():
+    registry = manager_home() / "cities.toml"
+    try:
+        return registry, (tomllib.loads(registry.read_text(encoding="utf-8-sig")) if registry.exists() else {})
+    except tomllib.TOMLDecodeError as e:
+        sys.exit(f"{registry}: {e}")
+
+
+def unclaimed_journals(cities):
+    """Journals in the game's folder (for example started in game) that no city in cities.toml uses yet."""
+    claimed = set((cities.get("cities") or {}).keys())
+    out = []
+    for d in sorted(ROOT.iterdir()) if ROOT.is_dir() else []:
+        if d.is_dir() and (d / "journal.json").exists() and d.name not in claimed:
+            try:
+                city = json.loads((d / "journal.json").read_text(encoding="utf-8")).get("city", "")
+            except (OSError, json.JSONDecodeError, AttributeError):
+                city = ""
+            out.append((d.name, str(city or "")))
+    return out
+
+
+WELCOME = """+++
+id = {bid}
+title = "Welcome to City Manager"
+date = {date}
+summary = "Your journal is set up. A few small things tonight, so the City Manager can get to know your city."
+
+[[tasks]]
+id = "snapshot"
+text = "On the **City** tab, press **Take a snapshot**: the City Manager reads your city from it"
+
+[[tasks]]
+id = "note"
+text = "Write a note on the **Notes** tab: what do you want this city to become?"
+
+[[tasks]]
+id = "window"
+text = "Optional: press **Float** at the top of this window and put it where you like it"
+
+[[tasks]]
+id = "wrapup"
+text = "Before you close the game: answer the **Wrap-up**, press **Done for today**, then save"
++++
+## How this works
+
+Before you play, tell Claude you're about to play: it writes tonight's briefing here. While you play, Claude is closed
+and nothing runs but the game. After you play, tell Claude you've just played: it reads what you ticked and noted,
+looks at your city, and writes a report and the next briefing.
+"""
+
+DOSSIER = """# {name}: dossier
+
+The City Manager's notes on this city: about a page. Fill the sections in with the Mayor over the first sessions, and
+keep the changing parts (the plan, places, the watch list) up to date after each report.
+
+## Identity
+What the city is meant to become; its map and theme.
+
+## How the city makes its living
+
+## The Mayor
+How they like to play and to be briefed: session length, what they enjoy, what they find tedious, their rules.
+
+## The plan
+The current plan and its guide in the planner.
+
+## Street names and places
+Re-read them from the newest snapshot (`city.py streets`): the game renames streets when roads are rebuilt.
+
+## Watch list
+
+## Tools for this city
+"""
+
+
+def cmd_init(name=None, jid=None, folder=None):
+    registry, cities = load_registry()
+    known = cities.get("cities") or {}
+    if not name:
+        found = unclaimed_journals(cities)
+        if len(found) == 1 and found[0][1]:
+            jid, name = found[0]
+            print(f"Adopting the journal started in game: {jid} ({name})")
+        else:
+            print("Which city? Run: journal.py init \"<the city's name, as the game shows it at the bottom of the screen>\"")
+            if found:
+                print("Journals in the game's folder that no city uses yet: " + ", ".join(f"{j} ({c or '?'})" for j, c in found))
+            return 2
+    name = str(name).strip()
+    if not name or len(name) > 100:
+        print("Give the city's name as the game shows it (up to 100 characters).")
+        return 2
+    picks = {}
+    try:
+        picks = json.loads((ROOT / "picks.json").read_text(encoding="utf-8")).get("picks", {}) if (ROOT / "picks.json").exists() else {}
+    except (OSError, json.JSONDecodeError, AttributeError):
+        picks = {}
+    picked = next((j for n, j in (picks.items() if isinstance(picks, dict) else []) if str(n).casefold() == name.casefold()), None)
+    jid = jid or (picked if isinstance(picked, str) and JOURNAL_ID.fullmatch(picked) else None) or journal_id_for(name)
+    if not JOURNAL_ID.fullmatch(jid):
+        print(f"{jid!r} can't be a journal id: lowercase letters, digits and dashes.")
+        return 2
+    for key, c in known.items():
+        if key == jid or str((c or {}).get("name", "")).casefold() == name.casefold():
+            print(f"{name} is set up already, as {key!r} in {registry}. `journal.py where {key}` shows its folders.")
+            return 1
+    home = manager_home()
+    city_dir = Path(folder).expanduser() if folder else home / jid
+    if city_dir.exists() and any(city_dir.iterdir()):
+        print(f"{city_dir} exists and isn't empty: pick another folder with --folder, or remove it.")
+        return 1
+    adopted = (ROOT / jid / "journal.json").exists()
+
+    today = datetime.now()
+    src = city_dir / "journal"
+    for d in ("projects", "reports", "briefings", "images"):
+        (src / d).mkdir(parents=True, exist_ok=True)
+    (city_dir / "manager").mkdir(parents=True, exist_ok=True)
+    def write(path, text):
+        path.write_text(text, encoding="utf-8", newline="\n")
+    write(src / "journal.toml", f"id = {toml_str(jid)}\ncity = {toml_str(name)}\naliases = []\nmanager = \"Claude, City Manager\"\n")
+    write(src / "city.md", f"+++\ntitle = {toml_str(name)}\ndate = {toml_str(today.strftime('%d %b %Y'))}\nsummary = \"The City Manager hasn't "
+          "looked at this city yet. Take a snapshot on this tab, then ask Claude for a report.\"\n+++\n")
+    write(src / "briefing.md", WELCOME.format(bid=toml_str(today.strftime("%Y-%m-%d")), date=toml_str(today.strftime("%d %b %Y"))))
+    write(city_dir / "manager/manager.toml", f"# The City Manager's settings for this city.\ncity = {toml_str(name)}\n"
+          f"save_names = [{toml_str(name)}]   # every name the city has had in game\njournal = \"../journal\"\n")
+    write(city_dir / "manager/dossier.md", DOSSIER.format(name=name))
+
+    text = registry.read_text(encoding="utf-8-sig") if registry.exists() else ""
+    entry = f"\n[cities.{jid}]\nname = {toml_str(name)}\ndir = {toml_str(city_dir.as_posix())}\n"
+    if "active" not in cities:
+        text = f"active = {toml_str(jid)}\n" + text
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    write_atomic(registry, text.rstrip("\n") + "\n" + entry if text.strip() else entry.lstrip("\n"))
+    tomllib.loads(registry.read_text(encoding="utf-8"))   # still valid
+
+    print(f"Set up {name}:")
+    print(f"  city folder   {city_dir}")
+    print(f"  cities        {registry}" + ("" if "active" in cities else f" (active: {jid})"))
+    code = cmd_build(src)
+    if adopted:
+        print("  The journal you started in game is kept: your notes and wrap-ups stay (they're in mayor.json).")
+    print("\nNext: load the city in the game and press Ctrl+J. The welcome briefing shows on the Today tab.")
+    return code
+
+
+def _mod_found(*patterns):
+    for pattern in patterns:
+        for hit in sorted(LOCALLOW.glob(pattern)):
+            return hit
+    return None
+
+
+def cmd_doctor():
+    ok = lambda b: "ok  " if b else "--  "
+    print("City Manager setup check\n")
+    try:
+        import PIL
+        pil = f"Pillow {PIL.__version__}"
+    except ImportError:
+        pil = None
+    print(f"{ok(pil)}Python {sys.version.split()[0]}" + (f" with {pil}" if pil else ": Pillow is missing (run the scripts with `uv run`, which fetches it)"))
+    game = LOCALLOW.is_dir()
+    print(f"{ok(game)}The game's data folder: {LOCALLOW}" + ("" if game else " (not found: start the game once, or set CS2_USERDATA)"))
+    dll = _mod_found("Mods/*/CityManager.dll", ".cache/Mods/pdx_mods/*/CityManager.dll") if game else None
+    if dll:
+        build = dll.parent / "BUILD.txt"
+        version = build.read_text(encoding="utf-8").strip() if build.exists() else dll.parent.name
+        print(f"{ok(True)}The City Manager mod: {version}")
+    else:
+        print(f"{ok(False)}The City Manager mod isn't installed: subscribe to it in the Paradox Launcher (or build it: python build.py --install)")
+    cpd = _mod_found(".cache/Mods/pdx_mods/155935_*", "Mods/*/CityPlanningDraft.dll") if game else None
+    print(f"{ok(cpd)}City Planning Draft (the build overlay)" + (": found" if cpd else ": not found; subscribe to it in the Paradox Launcher (Paradox Mods 155935)"))
+    journals = sorted(d for d in ROOT.iterdir() if d.is_dir() and (d / "journal.json").exists()) if ROOT.is_dir() else []
+    print(f"{ok(ROOT.is_dir())}Journals: {ROOT}" + ("" if ROOT.is_dir() else " (none yet: the mod makes this folder the first time the game runs with it)"))
+    for d in journals:
+        snap = d / "city.json"
+        when = datetime.fromtimestamp(snap.stat().st_mtime).strftime("%d %b %H:%M") if snap.exists() else None
+        print(f"      {d.name}: " + (f"snapshot {when}" if when else "no snapshot yet (City tab: Take a snapshot; Done for today and saves take one too)"))
+    registry, cities = load_registry()
+    known = cities.get("cities") or {}
+    print(f"{ok(known)}Cities set up: {registry}" + (f" ({', '.join(known)}; active: {cities.get('active', '?')})" if known else " (none yet)"))
+    found = unclaimed_journals(cities)
+    if not known:
+        print("\nNext: `journal.py init \"<city name>\"` sets a city up." + (f" A journal started in game can be adopted: {', '.join(j for j, _ in found)}." if found else ""))
+    return 0
+
+
 def cmd_archive(src):
     src = Path(src)
     b = src / "briefing.md"
@@ -777,6 +997,19 @@ def main(argv):
                 "mayor": lambda src: cmd_mayor(src, "--all" in flags, "--json" in flags)}
     if args[:1] == ["where"] and len(args) <= 2 and not flags:
         return cmd_where(*args[1:])
+    if args[:1] == ["doctor"] and len(args) == 1 and not flags:
+        return cmd_doctor()
+    if argv[1:2] == ["init"]:
+        rest, opts, it = [], {}, iter(argv[2:])
+        for a in it:
+            if a in ("--id", "--folder"):
+                opts[a[2:]] = next(it, "")
+            else:
+                rest.append(a)
+        if len(rest) > 1 or any(r.startswith("--") for r in rest) or "" in opts.values():
+            print(__doc__)
+            return 2
+        return cmd_init(rest[0] if rest else None, opts.get("id"), opts.get("folder"))
     allowed = {"--all", "--json"} if args[:1] == ["mayor"] else set()
     if len(args) != 2 or args[0] not in commands or flags - allowed:
         print(__doc__)

@@ -78,7 +78,9 @@ builds happen on the maintainer's machine. The in-game checks on Windows are man
   - planner-guide warnings;
   - mayor, ack, open and archive, and the command line;
   - the merge rule (`format/merge_cases.json`);
-  - `journal.py where`;
+  - `journal.py where`, `doctor` (what's missing, then what's there) and `init` (one city, a second one with an
+    accented name and its own folder, adopting a journal started in game with the Mayor's notes kept, the Mayor's own
+    pick, and what it refuses);
   - the guide exporter: City Planning Draft's format (`cityplan_format_1.2.2.json`), the naming warnings, junctions
     naming their own roads, the map id from the planner's document, reading the Mayor's drawings back;
   - `city.py` on a made-up city: the summary, changes across sessions matched by where roads are, streets, problems,
@@ -105,7 +107,7 @@ builds happen on the maintainer's machine. The in-game checks on Windows are man
   - the key registration;
   - the mod's and the game's UI logs.
 
-- **Counts as of 0.8.0:** 92 mod store (on Windows run twice: .NET 10 and .NET Framework 4.8), 28 panel, 55 plugin scripts (one Windows-only), 77 in game. CI runs the offline ones on Linux and Windows, from a temporary folder named "Zoë Ørsted". The second-city check fails on 0.3.0 (checked 2026-11-24: it linked the second city to the first one's journal).
+- **Counts as of 0.8.0:** 92 mod store (on Windows run twice: .NET 10 and .NET Framework 4.8), 28 panel, 61 plugin scripts (one Windows-only), 77 in game. CI runs the offline ones on Linux and Windows, from a temporary folder named "Zoë Ørsted". The second-city check fails on 0.3.0 (checked 2026-11-24: it linked the second city to the first one's journal).
 - **Windows file handling** (no tester yet, so in CI): saving while another program holds the file (shared for writing,
   or only for reading), `journal.py` replacing `journal.json` while the game reads it, and paths with accents. The C#
   tests also run on .NET Framework 4.8, which, like the game's Mono on Windows, saves through Windows' own functions.

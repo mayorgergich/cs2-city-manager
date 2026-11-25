@@ -549,6 +549,111 @@ class Where(unittest.TestCase):
             e.close()
 
 
+class FirstRun(unittest.TestCase):
+    """journal.py doctor and init: a new player's first steps, the same on Windows and Linux."""
+
+    def setUp(self):
+        self.e = Env()
+        self.home = self.e.base / "manager-home"
+        self.env = {"CITY_MANAGER_HOME": str(self.home)}
+
+    def tearDown(self):
+        self.e.close()
+
+    def jp(self, *args):
+        return self.e.run(JOURNAL, *args, env=self.env)
+
+    def cities(self):
+        import tomllib
+        return tomllib.loads((self.home / "cities.toml").read_text(encoding="utf-8"))
+
+    def test_doctor_says_what_is_missing_then_what_is_there(self):
+        code, out = self.jp("doctor")
+        self.assertEqual(code, 0, out)
+        self.assertIn("--  The City Manager mod isn't installed", out)
+        self.assertIn("--  City Planning Draft (the build overlay): not found", out)
+        self.assertIn("Cities set up", out)
+        self.assertIn('journal.py init "<city name>"', out)
+        (self.e.userdata / "Mods/CityManager").mkdir(parents=True)
+        (self.e.userdata / "Mods/CityManager/CityManager.dll").write_bytes(b"")
+        (self.e.userdata / "Mods/CityManager/BUILD.txt").write_text("City Manager 0.8.0 (build abc)\n", encoding="utf-8")
+        (self.e.userdata / ".cache/Mods/pdx_mods/155935_4").mkdir(parents=True)
+        (self.e.root / "riverton").mkdir()
+        (self.e.root / "riverton/journal.json").write_text('{"format": 1, "city": "Riverton"}', encoding="utf-8")
+        (self.e.root / "riverton/city.json").write_text("{}", encoding="utf-8")
+        code, out = self.jp("doctor")
+        self.assertIn("ok  The City Manager mod: City Manager 0.8.0 (build abc)", out)
+        self.assertIn("ok  City Planning Draft (the build overlay): found", out)
+        self.assertIn("riverton: snapshot", out)
+        self.assertIn("can be adopted: riverton", out)
+
+    def test_init_sets_a_city_up_in_one_go(self):
+        code, out = self.jp("init", "Riverton")
+        self.assertEqual(code, 0, out)
+        city = self.home / "riverton"
+        for rel in ("journal/journal.toml", "journal/briefing.md", "journal/city.md", "manager/manager.toml", "manager/dossier.md"):
+            self.assertTrue((city / rel).exists(), rel)
+        c = self.cities()
+        self.assertEqual(c["active"], "riverton")
+        self.assertEqual(c["cities"]["riverton"]["name"], "Riverton")
+        j = json.loads((self.e.root / "riverton/journal.json").read_text(encoding="utf-8"))
+        self.assertEqual(j["city"], "Riverton")
+        self.assertEqual(j["briefing"]["title"], "Welcome to City Manager")
+        self.assertEqual([t["id"] for t in j["briefing"]["tasks"]], ["snapshot", "note", "window", "wrapup"])
+        self.assertEqual(json.loads((self.e.root / "cities.json").read_text(encoding="utf-8"))["aliases"]["Riverton"], "riverton")
+        code, out = self.e.run(JOURNAL, "where", env=self.env)
+        self.assertIn(f"source    {city / 'journal'}", out)
+        code, out = self.jp("status", city / "journal")   # the usual tools work on it straight away
+        self.assertEqual(code, 0, out)
+
+    def test_a_second_city_and_a_name_with_accents(self):
+        self.jp("init", "Riverton")
+        code, out = self.jp("init", 'São "Paulo"', "--folder", self.e.base / "other place" / "sp")
+        self.assertEqual(code, 0, out)
+        c = self.cities()
+        self.assertEqual(c["active"], "riverton")                      # the first city stays active
+        self.assertEqual(c["cities"]["sao-paulo"]["name"], 'São "Paulo"')
+        self.assertTrue((self.e.base / "other place/sp/journal/journal.toml").exists())
+        aliases = json.loads((self.e.root / "cities.json").read_text(encoding="utf-8"))["aliases"]
+        self.assertEqual(aliases['São "Paulo"'], "sao-paulo")           # the mod finds it by the city's real name
+
+    def test_init_adopts_a_journal_started_in_game_and_keeps_the_mayors_notes(self):
+        (self.e.root / "riverton").mkdir()
+        (self.e.root / "riverton/journal.json").write_text('{"format": 1, "city": "Riverton"}', encoding="utf-8")
+        (self.e.root / "riverton/mayor.json").write_text('{"format": 1, "notes": [{"id": "n1", "text": "keep me"}]}', encoding="utf-8")
+        code, out = self.jp("init")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Adopting the journal started in game: riverton (Riverton)", out)
+        self.assertIn("keep me", (self.e.root / "riverton/mayor.json").read_text(encoding="utf-8"))
+        self.assertIn("Welcome", (self.e.root / "riverton/journal.json").read_text(encoding="utf-8"))
+
+    def test_init_follows_the_mayors_own_pick(self):
+        (self.e.root / "my-journal").mkdir()
+        (self.e.root / "picks.json").write_text('{"picks": {"Riverton": "my-journal"}}', encoding="utf-8")
+        code, out = self.jp("init", "Riverton")
+        self.assertEqual(code, 0, out)
+        self.assertIn("riverton", self.cities()["cities"].get("my-journal", {}).get("name", "").lower())
+
+    def test_init_refuses_what_it_shouldnt_do(self):
+        self.jp("init", "Riverton")
+        code, out = self.jp("init", "riverton")
+        self.assertEqual(code, 1)
+        self.assertIn("set up already", out)
+        busy = self.e.base / "busy"
+        busy.mkdir()
+        (busy / "something.txt").write_text("x", encoding="utf-8")
+        code, out = self.jp("init", "Elsewhere", "--folder", busy)
+        self.assertEqual(code, 1)
+        self.assertIn("isn't empty", out)
+        code, out = self.jp("init", "X", "--id", "Bad Id")
+        self.assertEqual(code, 2)
+        code, out = self.jp("init")                                       # no name, nothing to adopt
+        self.assertEqual(code, 2)
+        self.assertIn("Which city?", out)
+        code, out = self.jp("init", "A", "B")
+        self.assertEqual(code, 2)
+
+
 class SampleJournal(unittest.TestCase):
     """docs/sample-journal (the made-up city Riverton, for testers and the docs) builds without problems or warnings."""
 

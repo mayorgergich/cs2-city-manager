@@ -55,9 +55,9 @@ else too.
       junctions by their menu names, named so you always know which is which (`Riverton 4`, `Now · Main street`)
 - [x] Your own drawings in the planner are kept when the City Manager writes a new plan
 - [x] Nothing drops off the list: open tasks carry over, stale ones get asked about, and projects keep their history
+- [x] One-line install in Claude Code, and a first-run setup that checks your game and makes your city's journal
 
 **Coming next**
-- [ ] One-step install for the plugin, and first-run setup for a new city
 - [ ] Reports straight from the snapshot: your numbers against last session, a fresh map, and steps checked in the city
 - [ ] *Show in planner*: open a project's plan in City Planning Draft with one click
 - [ ] Notes about the building, road or district you've selected, and notes marked as questions for the City Manager
@@ -104,10 +104,31 @@ compared with the plan, an answer to every note, what's still open) and an updat
 No Claude? The mod still works on its own as an in-game notebook for your notes, projects and wrap-ups, and you can
 write a journal by hand ([format/README.md](format/README.md)).
 
+## Getting started
+
+1. **The mod.** City Manager isn't on Paradox Mods yet; until it is, build it from this repo with `python build.py
+   --install` (see [docs/DEVELOPING.md](docs/DEVELOPING.md)), and subscribe to City Planning Draft in the Paradox
+   Launcher.
+2. **uv,** which runs the plugin's scripts. On Windows: `winget install astral-sh.uv`. Elsewhere: the one-line install on
+   [docs.astral.sh/uv](https://docs.astral.sh/uv/).
+3. **The plugin.** In Claude Code (the Claude desktop app's Code tab, or a terminal), type:
+
+   ```
+   /plugin install city-manager --marketplace mayorgergich/cs2-city-manager
+   ```
+
+   That needs Claude Code 2.1.275 or later. On older versions, use two lines instead:
+   `/plugin marketplace add mayorgergich/cs2-city-manager`, then `/plugin install city-manager@cs2-city-manager`.
+4. **Your city.** Load your city in the game once with the mod on, then tell Claude: *"Set up City Manager for my city."*
+   It checks your setup (the mods, the game's folder, uv), asks a few questions about how you like to play, and makes
+   your city's journal. Press Ctrl+J in the game and the welcome briefing is there.
+
+From then on: tell Claude when you're about to play and when you've just played (see "How" above).
+
 ## Current progress
 
 Early days. I play with it in my own city every session, and it has a lot of automatic tests, but it isn't on Paradox
-Mods yet, and setting up the Claude Code plugin is still a manual job. I play on Linux. Windows is covered by the
+Mods yet. I play on Linux. Windows is covered by the
 automatic tests but hasn't had a player yet, so if you're on Windows, you'd be a big help. What's planned is in the
 Features list above.
 
