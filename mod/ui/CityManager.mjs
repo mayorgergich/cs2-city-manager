@@ -69,6 +69,7 @@ const fresh$ = api.bindValue(G, "fresh", false);
 const ICON = "coui://ui-mods/images/CityManager-icon.svg";
 const ICON_NEW = "coui://ui-mods/images/CityManager-icon-new.svg";
 
+const COMMAND = "/city-manager";   // the City Manager plugin's command in Claude Code (in full, /city-manager:city-manager)
 const PANEL_W = 590;      // rem
 const BODY_W = PANEL_W - 28 - 14; // content width inside the padding, less the scrollbar
 const BODY_H = 700;       // rem
@@ -163,6 +164,7 @@ const C = {
     arrow: { width: "30rem", padding: "5rem 0", textAlign: "center", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: "4rem" },
     pickName: { flex: 1, textAlign: "center", padding: "5rem 4rem" },
     caption: { ...SMALL, marginTop: "2rem" },
+    command: { ...BOXED, marginTop: "6rem", backgroundColor: "rgba(255,255,255,0.10)", fontWeight: "bold", color: "#cfe3ff" },
     stepTools: { display: "flex", flexDirection: "row", marginLeft: "26rem", marginTop: "2rem", marginBottom: "4rem" },
     miniButton: { ...BUTTON, padding: "2rem 8rem", fontSize: "13rem", lineHeight: "18rem" },
     viewer: { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.82)", pointerEvents: "auto",
@@ -424,8 +426,16 @@ function TodayTab(props) {
         if (br.summary) out.push(h("div", { key: "s", style: C.p }, inline(b, br.summary)));
         if (tasks.length) out.push(section("ls", `Today's list · ${done} of ${tasks.length} done`));
         tasks.forEach((t) => out.push(taskCheck(br.id, t)));
+    } else if (!str(j.manager) && !projects.length) {
+        // A journal started in game, with no City Manager yet: what it is, and the one step to get one.
+        out.push(h("div", { key: "gs", style: C.h1 }, "Your journal is ready"));
+        out.push(h("div", { key: "g1", style: C.p }, "On its own it's a notebook: write notes on the Notes tab as you play, and answer the Wrap-up when you're done."));
+        out.push(section("gm", "Want a City Manager to plan with you?"));
+        out.push(h("div", { key: "g2", style: C.p }, "The journal takes a snapshot of your city by itself, and that's what the City Manager reads. Save, go back to the main menu or close the game, then in Claude Code type:"));
+        out.push(h("div", { key: "g3", style: C.command }, COMMAND));
+        out.push(h("div", { key: "g4", style: C.small }, "It needs the City Manager plugin for Claude Code: the mod's page says how to install it."));
     } else {
-        out.push(h("div", { key: "nb", style: C.dim }, "No briefing yet. Ask the City Manager for one before you play."));
+        out.push(h("div", { key: "nb", style: C.dim }, "No briefing yet. Before you play, ask the City Manager for one: in Claude Code, type " + COMMAND + "."));
     }
     // A task the new briefing carries on (its "from") shows only there, not twice.
     const prev = objs(j.briefings)[0];

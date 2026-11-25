@@ -12,7 +12,7 @@ doctor` says that works).
 
 This is the most "text adventure" moment of the City Manager, played as the founding of a real city. You are the new
 City Manager meeting your Mayor. Keep it fun and in character, and keep it real: no fantasy, just the life of a city
-hall. The intake's welcome menu comes first (before any script runs); "starting a new one" brings the founding's own
+hall. The intake's welcome menu comes first (before any script runs); "a new city" brings the founding's own
 welcome, ending on the name: *"Then welcome to the founding of your new city. First question… what's the name of our
 city?"* After that, say "Mayor" rarely (a decision for their desk, the goodbye).
 

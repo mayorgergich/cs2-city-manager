@@ -37,7 +37,8 @@ plans.
    If it asks where to install, choose **for you** (your user account): then the plugin works whichever folder you
    open Claude Code in. Updates don't come by themselves: in a terminal, `/plugin update city-manager@cs2-city-manager`; in
    the desktop app, from the plugins menu (not tried yet: if you find how, tell us on Discord).
-3. **uv,** if the setup check asks for it: on Windows `winget install astral-sh.uv`, elsewhere the one-line install on
+3. **uv,** if the setup check asks for it: your City Manager offers to install it for you (one command you approve).
+   To do it yourself instead: on Windows `winget install --id=astral-sh.uv -e`, elsewhere the one-line install on
    [docs.astral.sh/uv](https://docs.astral.sh/uv/).
 
 Then [your first conversation](#your-first-conversation), the same for a new city and one you already have.
@@ -50,15 +51,15 @@ folder is your City Manager folder, which the setup makes: `%LOCALAPPDATA%\CityM
 `~/.local/share/city-manager` on Linux. In the Claude desktop app, pick it with the folder button next to the prompt
 box; in a terminal, `cd` there and run `claude`.
 
-**How:** type **`/city-manager:city-manager`**. Your City Manager welcomes you and asks what's next: continuing work on a city
-(then: about to play, or just played?) or starting a new one. Words after the command are shortcuts that skip the
-question:
+**How:** type **`/city-manager`** (if that doesn't work, for example because another plugin uses the name, type
+`/city-manager:city-manager`). Your City Manager welcomes you and asks what brings you in: about to play, just played,
+a new city, or a city you already have. Words after the command are shortcuts that skip the question:
 
 | Shortcut | Does |
 |---|---|
-| `/city-manager:city-manager prep me` | Tonight's briefing (add how long you've got, if you like) |
-| `/city-manager:city-manager report` | The report on the session you just played, and the next briefing |
-| `/city-manager:city-manager` and a question | An answer: *where are we with Main Street?* |
+| `/city-manager prep me` | Tonight's briefing (add how long you've got, if you like) |
+| `/city-manager report` | The report on the session you just played, and the next briefing |
+| `/city-manager` and a question | An answer: *where are we with Main Street?* |
 
 Plain words often work too, because Claude picks the City Manager from what you ask, but the command always reaches it.
 
@@ -76,12 +77,12 @@ mod takes, and the mod takes the first one as soon as the journal starts.
    journal's **City** tab.)
 3. Save, and go back to the main menu (or quit). Claude never runs while you play; the main menu isn't playing.
 
-**2. Then in Claude Code,** type `/city-manager:city-manager`. It opens in character, like the start of an old text adventure, and
-asks one thing: *are we continuing work on a city, or starting a new one?*
-- **Starting a new one:** it asks the city's name, finds its journal, and founds it properly.
-- **Continuing:** it lists your cities with a City Manager journal. A city it hasn't met yet gets taken over; one it
-  knows goes straight to tonight's briefing or the report. No journal anywhere yet? It asks whether you're setting it
-  up in a city you already have, and walks you through starting one.
+**2. Then in Claude Code,** type `/city-manager`. It opens in character, like the start of an old text adventure, and
+asks one thing: *what brings you in?*
+- **About to play** or **just played:** it finds your city (or asks which, if you have several) and writes tonight's
+  briefing or the report.
+- **A new city:** it asks the city's name, finds its journal, and founds it properly.
+- **A city I already have:** it finds the city's journal (or walks you through starting one) and takes it over.
 
 Either way, it says what it sees (*"Napster is brand new: the highways are in, nothing else yet."*) and you agree the
 mode together:
@@ -96,12 +97,14 @@ Every part is optional, and every question takes your own words or a note.
 
 ```mermaid
 flowchart TD
-    A(["/city-manager:city-manager"]) --> M{"Continuing a city,<br/>or starting a new one?"}
-    M -- "Starting a new one" --> N["Your city's name"]
-    M -- "Continuing" --> P{"Cities with a<br/>City Manager journal?"}
-    P -- "One it knows" --> S(["About to play or just played:<br/>the briefing or the report"])
-    P -- "A new one for it" --> D
-    P -- "None yet" --> Q["In game: Ctrl+J, start a journal,<br/>save, back to the main menu"]
+    A(["/city-manager"]) --> M{"What brings you in?"}
+    M -- "About to play,<br/>or just played" --> W{"Which city?"}
+    W -- "One it has planned" --> S(["The briefing or the report"])
+    W -- "Not planned yet" --> D
+    M -- "A new city" --> N["Your city's name"]
+    M -- "A city I already have" --> P{"Has it a City<br/>Manager journal?"}
+    P -- "Yes" --> D
+    P -- "Not yet" --> Q["In game: Ctrl+J, start a journal,<br/>save, back to the main menu"]
     Q --> D
     N --> D["It finds the city's journal<br/>and reads its snapshot"]
     D --> E{"What's been built?"}
@@ -126,7 +129,7 @@ flowchart TD
 **With planner drafts:** in game, open City Planning Draft and press **Import latest file**; build from the **Now**
 plans, which match the first briefing's steps.
 
-**No city made yet?** Choose *starting a new one* and say you haven't made it. The founding then starts before New
+**No city made yet?** Choose *a new city* and say you haven't made it. The founding then starts before New
 Game: maps that fit what
 you want, with pictures, the New Game settings in the screen's own words, and your city's character. Then you make the
 city (the chat gives the exact steps: the name must match). Once it loads, the journal waiting under its name links by
@@ -137,9 +140,9 @@ and tell the chat. The road plan and the drafts follow, as above.
 
 | When | You | The City Manager |
 |---|---|---|
-| **Before you load your city** | `/city-manager:city-manager prep me`. Say how long you've got, if you like | Writes tonight's briefing: 3 to 7 tasks, your projects' next steps, at most two decisions |
+| **Before you load your city** | `/city-manager prep me`. Say how long you've got, if you like | Writes tonight's briefing: 3 to 7 tasks, your projects' next steps, at most two decisions |
 | **In the game** | Close Claude. Ctrl+J for the journal: tick tasks, change a project's status, write notes | Nothing: no AI runs while you play |
-| **When you're done** | Answer the Wrap-up, press Done for today, save. Then `/city-manager:city-manager report` | Reads your ticks, notes and the city's snapshot, writes the report, answers every note, and writes the next briefing |
+| **When you're done** | Answer the Wrap-up, press Done for today, save. Then `/city-manager report` | Reads your ticks, notes and the city's snapshot, writes the report, answers every note, and writes the next briefing |
 
 ## When something's off
 

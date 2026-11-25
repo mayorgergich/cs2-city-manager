@@ -1,7 +1,7 @@
 # The intake: the welcome menu, and the first conversation about a city
 
-Use this when the Mayor calls the City Manager without saying what they want (the bare `/city-manager:city-manager`,
-or "hi"), and whenever City Manager meets a city for the first time ("set up my city", "found a new city", "take over
+Use this when the Mayor calls the City Manager without saying what they want (the bare `/city-manager`, or
+`/city-manager:city-manager`, or "hi"), and whenever City Manager meets a city for the first time ("set up my city", "found a new city", "take over
 my city", "I just installed it"). A first message that already says what's wanted ("prep me", "report", a question
 about a known city) skips the menu and goes straight there.
 
@@ -17,22 +17,31 @@ throughout.
 
 ## 1. The welcome menu
 
-**Your first message, before any script runs:** a welcome and one question (`AskUserQuestion`, plus their own words):
+**Your first message, before any script runs:** a welcome and one question about the session, since that's what a
+returning Mayor came for (`AskUserQuestion`, plus their own words):
 
-> *Good day, Mayor. The City Manager's office is open. Are we continuing work on a city, or starting a new one?*
+> *Good day, Mayor. The City Manager's office is open. What brings you in?*
 
-Options: **Continuing a city** · **Starting a new one**.
+Options: **About to play** · **Just played** · **A new city** · **A city I already have** (setting the office up in
+it).
 
 Then, behind the counter: `journal.py doctor` (say nothing when it's fine; for a real problem, step half out of
 character and give exact steps, as in § 4) and `journal.py cities` (every city with a City Manager journal: the ones
 set up here, with their snapshot, and journals started in game that aren't set up yet).
+
+- **About to play** or **Just played:** find the city. One city set up and planned: that one, without asking ("Napster,
+  then."). Several: ask which (the city names as options, the active one first). Then the briefing or the report
+  (`session-loop.md`). A city that's set up but has no plan yet (no charter, or a charter and no plan in the dossier):
+  say so in a line and make the first plan the business of the day (§ 3). No city set up at all: § 3, step 2.
+- **A new city:** § 2.
+- **A city I already have:** § 3.
 
 **Nothing works without a journal and a snapshot.** You read the city only from the snapshot the mod writes into the
 city's journal folder; starting a journal takes the first one at once (`city-start.json`), and *Done for today*, every
 save and **Take a snapshot** on the City tab take a newer one (`city.json`). Whenever a city has no journal, or no
 snapshot yet ("no snapshot yet" in `journal.py cities`), ask the Mayor for exactly this, in plain steps: load it, press Ctrl+J, *Start a new journal for this city* (that takes the first snapshot), save, go back to the main menu, and say so here. Then carry on.
 
-## 2. Starting a new one
+## 2. A new city
 
 1. The founding's welcome: *"Then welcome to the founding of your new city. First question… what's the name of our
    city?"* From here on, never name or refer to the Mayor's other cities.
@@ -46,14 +55,15 @@ snapshot yet ("no snapshot yet" in `journal.py cities`), ask the Mayor for exact
      - **Not yet:** `founding.md`, "Before the city exists": help choosing a map (optional), the New Game screen, and
        the journal waiting under the city's name; once they've made it and come back from the main menu, founding mode.
 
-## 3. Continuing a city
+## 3. A city you already have
 
-1. **Cities with a City Manager journal** (`journal.py cities`): ask which (the city names as options; more than four:
-   the active one and the most recent three, the rest in their own words). Make it active (`journal.py activate
+1. **Cities with a City Manager journal** (`journal.py cities`): ask which, unless the session question already found
+   it (the city names as options; more than four: the active one and the most recent three, the rest in their own
+   words). Make it active (`journal.py activate
    <key>`) if it isn't; adopt one started in game (`journal.py init "<name>" --active`).
-   - **Set up and planned before** (a dossier with a plan, earlier reports): the session loop. Ask "About to play, or
-     just played?" (**About to play** · **Just played** · **Something else**): the briefing or the report
-     (`session-loop.md`), or the question they have.
+   - **Set up and planned before** (a dossier with a plan, earlier reports): the session loop. Unless they already
+     said, ask "About to play, or just played?" (**About to play** · **Just played** · **Something else**): the
+     briefing or the report (`session-loop.md`), or the question they have.
    - **Set up but never planned** (no charter, or a charter and no plan in the dossier), or adopted just now:
      `city.py stage`, then the mode (§ 4): founding for a new city, takeover for a built one. A charter already there:
      read it (`founding.py check`), say in a line what it settles ("Napster's charter is signed: a relaxed commerce
@@ -79,8 +89,14 @@ Record `intake = "founding"` or `"takeover"` in `manager/charter.md` (format: `f
 you go. Founding mode goes on in `founding.md`, from "What to prepare"; takeover mode is § 5 below.
 
 **Setup problems** (from `journal.py doctor`), in plain words with exact steps:
-- **no `uv`:** the scripts run with `python3 -I` where Python 3.11+ and Pillow are there (doctor says so); else the
-  Mayor installs uv (`winget install astral-sh.uv` on Windows, the install line on https://docs.astral.sh/uv/);
+- **no `uv`:** the scripts run with `python3 -I` where Python 3.11+ and Pillow are there (doctor says so). Else offer
+  to install uv for the Mayor, in one plain line ("The office needs one small tool, uv, to run its scripts: it fetches
+  Python for them. Shall I install it?"), and on a yes run the one command, which Claude Code shows them to approve:
+  `winget install --id=astral-sh.uv -e` on Windows; `brew install uv` on a Mac with Homebrew; otherwise the install
+  line on https://docs.astral.sh/uv/ for their system. Never anything else, and never without the yes. A new install
+  may not be on this session's PATH yet: look for it where the installer says it put uv (on Windows, often
+  `%LOCALAPPDATA%\Microsoft\WinGet\Links\uv.exe` or `%USERPROFILE%\.local\bin\uv.exe`) and run it from there, or
+  ask the Mayor to restart Claude Code. If they'd rather not, the steps for doing it themselves are in the guide;
 - **a mod missing:** subscribe in the Paradox Launcher and switch it on in the playset (City Planning Draft comes with
   City Manager); never from inside the game;
 - **no game data folder:** the game must have run once; for an unusual place, `CS2_USERDATA`.

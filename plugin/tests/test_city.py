@@ -267,7 +267,9 @@ class Numbers(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("| People | 1,000 | 1,312 | +312 |", out)
         self.assertIn("| Money | $50,000 | $8,000 | −$42,000 |", out)
-        self.assertIn("| Roads and highways | 500 m | 600 m | +100 m |", out)   # a building's own piece left out
+        self.assertIn("| Streets | 500 m | 600 m | +100 m |", out)   # a building's own piece left out
+        self.assertIn("| Balance a month | $10,000 | $10,000 | +$0 |", out)
+        self.assertIn("| Experience | 900 | 900 | +0 |", out)
         self.assertIn("| Unemployment | ? | 46.6% |  |", out)                    # the older snapshot has no people part
         self.assertIn("| Map tiles | 9 | 10 | +1 |", out)
         self.assertNotIn("Nothing new", out)

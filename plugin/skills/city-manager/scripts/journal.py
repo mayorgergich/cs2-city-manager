@@ -342,6 +342,9 @@ def compile_journal(cfg, pages, problems, previous, stamps):
     def page(kind, path, meta, body):
         where = f"{kind}/{path.name}" if kind != "briefing" else path.name
         f = Fields(where, problems)
+        if "TODO:" in body or any("TODO:" in str(v) for v in meta.values()) or any(
+                "TODO:" in str(r) for r in (meta.get("replies") if isinstance(meta.get("replies"), list) else [])):
+            problems.add(where, "still has TODO: lines from `report.py --draft`: write them, or remove the ones that don't apply")
         pid = f.text(meta, "id")
         if not DATE_ID.fullmatch(pid):
             problems.add(where, f"id {pid!r} must be a date like 2026-11-24 (or 2026-11-24-2): lists sort by it")
@@ -1072,7 +1075,8 @@ def cmd_doctor():
         print(f"{ok(True)}uv: {uv}")
     else:
         print(f"{ok(bool(pil))}uv: not installed" + (" (fine: this Python has what the scripts need; run them with `python3 -I`)" if pil else
-              " (install it: `winget install astral-sh.uv` on Windows, the install line on https://docs.astral.sh/uv/ elsewhere)"))
+              " (the City Manager can install it, with your OK: `winget install --id=astral-sh.uv -e` on Windows, the install line on "
+              "https://docs.astral.sh/uv/ elsewhere)"))
     try:
         from compression import zstd  # noqa: F401
         zs = True

@@ -8,10 +8,28 @@ Mayor. Tonight's agenda…"), the report is the debrief after the session ("Welc
 our city…"). One "Mayor" in the greeting is plenty; after it, talk as colleagues do. Keep journal text lighter
 still: a voice in the summary line, practical words in the tasks.
 
+## The fast path
+
+The Mayor is waiting: most sessions need only this, and the sections below for detail.
+
+**Briefing:** (1) `report.py <city>/journal --prep`. (2) Not played since and nothing new from the Mayor: the briefing
+the last report wrote stands; say so in two lines and stop. (3) Otherwise fix what the prep found (a locked piece, a
+renamed street, the guide's order with `cityplan.py front`), revise the briefing's tasks, `jp build`, and hand over.
+
+**Report:** (1) `report.py <city>/journal --draft` (both sides of the journal, the city's facts, the pictures, and
+`reports/<date>.md` written as a draft). (2) Fill every `TODO:` (the summary, an answer to every note and wrap-up
+answer, what you see, at most two decisions) and keep five to seven numbers. (3) Tick the project steps its "Built as
+planned" names. (4) `jp archive`, the next briefing from the plan you have, `jp build`, `jp ack`, `city.py keep`.
+(5) Send the debrief. (6) Only then, and only on a yes: the next streets (`plan.py grid`, `plan.py check`, the guide).
+
 ## Briefing (before the Mayor plays)
 
-1. **Read the state.**
-   - Run `jp mayor <city>/journal` (anything since the last report: notes the Mayor wrote after a report, an unfinished wrap-up) and `jp open <city>/journal`.
+1. **Read the state, in one run:** `report.py <city>/journal --prep` gives what the Mayor added since the last report
+   (notes, an unfinished wrap-up), what's still open, whether the city was played since (if it was, that report comes
+   first), the plan checked against the newest snapshot (locked pieces, grades, crossings) and whether the city's guide
+   is the one the planner's Import will load. Not played and nothing new: the briefing the report wrote still fits;
+   say so and stop (the Mayor may want changes).
+   - For a closer look: `jp mayor <city>/journal` and `jp open <city>/journal`.
    - Skim the dossier's watch list.
    - **A city with a charter but no plan yet** (`manager/charter.md` or `founding.md`, nothing in the dossier's plan;
      the intake stopped before its plan): the first plan comes first, from the start snapshot (`founding.md`, §§ 5-6).
@@ -39,8 +57,18 @@ still: a voice in the summary line, practical words in the tasks.
 
 ## Report (after the Mayor plays)
 
+**Report first, then the next plan.** The Mayor is waiting: the debrief (what changed, what got built against the
+cards, an answer to every note) should reach them within a few minutes. Gather everything in one go (step 2), write
+and send the report, then the next briefing from the plans you already have. **Designing new streets** (the next
+neighbourhood, a new phase) is a job of its own: once the report is out, ask "Shall I draw the next streets now, or at
+your next prep?" and draw them only on a yes.
+
 1. **Make sure the game is closed** and that the Mayor saved. Autosaves count, but a manual save is clearer.
-2. **Gather the facts.**
+2. **Gather the facts, in one run:** `report.py <city>/journal` gives both sides: the Mayor's (ticks, statuses,
+   notes, the wrap-up, what's still open) and the city's (the numbers against the last report with their
+   `[[numbers]]` entries ready to paste, what was built, changed and removed by street, the plan built so far, a fresh
+   map and a progress picture in `images/`, and the open road ends). That's the report's facts; the tools below are
+   for a closer look where something needs one.
    - `jp mayor <city>/journal` lists everything the Mayor did in the journal: ticks, statuses, notes (with pinned places) and the wrap-up answers. `jp open` lists what's still open.
    - **The city snapshot** (City Manager mod 0.6 or later): the mod writes `city.json` when the Mayor presses *Done for
      today* and whenever the game saves, and `city-start.json` when the city loads. Read it with `city.py` (run like
@@ -63,7 +91,9 @@ still: a voice in the summary line, practical words in the tasks.
      - **the same save as last time:** say so; there's nothing new to measure.
    - Without a snapshot or a facts tool, work from the journal, the Mayor's notes and screenshots, and ask for the two or three numbers that matter.
 3. **Look closer where it matters.** Check what the Mayor said they built, and what the wrap-up flags, against whatever shows the city. Compare each build with its card (`guides.md`, "Build cards") from `plan.py built`: the pieces used, and any street the game renamed. Ask about every "built differently" line: it may well be on purpose, and then the next guide follows what's there. Say when something is a guess.
-4. **Write `reports/<date>.md`** (format in `journal-format.md`):
+4. **Write `reports/<date>.md`** (format in `journal-format.md`), starting from the draft `report.py --draft` wrote:
+   its numbers, what got built and the pictures are filled in, every unanswered note has a `[[replies]]` entry, and
+   `TODO:` marks your own words (`journal.py build` refuses a page with one left):
    - a summary of two or three sentences;
    - `[[numbers]]` from the facts;
    - **What got built** (by whom);
@@ -87,7 +117,8 @@ still: a voice in the summary line, practical words in the tasks.
    - a task you carry into the new list gets `from = "<old briefing id>/<task id>"`, so it shows once, in the new list;
    - a task the Mayor answered without ticking (a decision settled in the wrap-up) gets `done = true` and a `note` saying how it was settled, in the archived briefing's file;
    - anything else stays visible under "Still open from…" until it's done or carried.
-8. **Publish and acknowledge.** Run `jp build <city>/journal`, then `jp ack <city>/journal`. Keep a copy of the
+8. **Publish and acknowledge.** Send the Mayor the debrief as soon as it's built (the numbers, what got built, the
+   answers, the next briefing in a line), then offer the next streets if a new district is due. Run `jp build <city>/journal`, then `jp ack <city>/journal`. Keep a copy of the
    snapshot the report used: `city.py keep <city>/journal` (it goes to `<city>/manager/snapshots/<date>.json`, since the
    mod replaces `city.json` every save), so the next report compares with it (`--before kept`).
 9. **Update the dossier** (plan table, watch list, places).

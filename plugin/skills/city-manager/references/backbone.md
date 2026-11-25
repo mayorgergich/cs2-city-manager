@@ -36,8 +36,10 @@ Read alongside: `road-hierarchy.md` (which road where), `interchanges.md` (meeti
    The intake's road questions have keys of their own (an older charter may have them in `notes.backbone`
    instead, in words):
    - **`crossings`** (`tunnels`/`bridges`/`mix`): where roads cross highways and rail;
-   - **`detail`** (`outline`/`steps`): an outline (main roads and districts, no numbered steps for local streets) or
-     the first phase step by step (every piece in build order, with build cards);
+   - **`detail`** (`outline`/`steps`): how much of the **later** phases to draw: an outline (main roads and districts
+     only) or step by step. Either way, **the district the Mayor builds next always gets its local streets** drawn and
+     numbered with build cards (rows, end streets, back streets, a works street): a plan of main roads with zoned areas
+     "for your own streets" left a Mayor with nothing to build from (Napster, 25 Nov);
    - **`expand`** (`one`/`several`/`suggest`): one district at a time, several fronts, or let the plan suggest;
    - **`start_hint`**: where the Mayor wants to start, in their words. It matters when every tile is open (unlock map
      tiles), where the survey otherwise takes the 3 × 3 tiles around the map's starter road, or on a map with several
@@ -166,7 +168,12 @@ one way, and let the Mayor choose.
   With unlimited money (`options`, or the survey's settings table), skip the money side: size the phase by `pace` only.
 - **The skeleton:** where the highway enters (the survey's "where a highway becomes a street"), the first arterials,
   collectors with stubs pointing where the city grows, and the site of the first interchange (`interchanges.md`).
-- **The first district's streets:** block sizes and spacing from `road-hierarchy.md`, the pattern from `style`.
+- **The first district's streets, every one:** block sizes and spacing from `road-hierarchy.md`, the pattern from
+  `style`, each street a numbered plan item with its build card, whatever `detail` says. For a grid, `plan.py grid`
+  draws them in one run along the street they hang off (`--along "<street>"`, or `--origin X,Z --dir DX,DZ` for a
+  planned or curving one), with the spacing rule built in and numbered names; then `plan.py check`, and adjust the
+  side, rows, start or length rather than writing coordinates by hand. Curving streets on hills are still yours to
+  draw.
 - **Utility sites:** a water pump on a groundwater tile (or upstream on a river), sewage downstream and away from any
   waterfront people will use, room for power and for garbage.
 - Everything in the first phase must sit on owned tiles and use unlocked pieces; `plan.py check` enforces both.
@@ -281,8 +288,10 @@ a few lines in the chat on what to build first instead of step 4.
 
 ## 8. After the Mayor builds
 
-- Read the newest snapshot: `city.py changes` (what was built), `city.py streets` (the names the game gave the new
-  roads: use those from now on, never names from an older snapshot unchecked).
+- Read the newest snapshot: `report.py` gives what was built, the plan's progress and the **open road ends** (where
+  the Mayor's streets stop: start the next district's streets from those, never from your own code against the
+  snapshot); `city.py streets` gives the names the game gave the new roads (use those from now on, never names from an
+  older snapshot unchecked); `city.py ends --near X,Z` for the ends around one spot.
 - Compare with the build cards: "Market Street: built as a Four-Lane Road; the card said Two-Lane". Ask whether it was
   on purpose; the Mayor's choice wins, and the next guide follows what's really there.
 - Note where the build strayed from the road hierarchy, how far, and what it means in game (`road-hierarchy.md`

@@ -18,6 +18,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "plugin/skills/city-manager/scripts"
 JOURNAL = SCRIPTS / "journal.py"
+REPORT = JOURNAL.parent / "report.py"
 
 
 def png(path, w=40, h=20, colour=(200, 0, 0)):
@@ -142,6 +143,48 @@ class JournalBuild(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("projects/cards.md step ramp: picture nope.png is not in images/", out)
         self.assertIn("projects/cards.md step ramp: where needs numbers x and z", out)
+
+    def test_report_gives_both_sides_in_one_run(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import made_up_map as mm
+        code, out = self.e.jp("build", self.e.src)
+        self.assertEqual(code, 0, out)
+        snap = mm.snapshot()
+        (self.e.root / "testcity/city-start.json").write_text(json.dumps(snap), encoding="utf-8")
+        snap["taken"] = "2026-11-24T22:00:00Z"
+        (self.e.root / "testcity/city.json").write_text(json.dumps(snap), encoding="utf-8")
+        self.e.mayor({"format": 1, "ticks": {"p:roads/lights": {"done": True, "at": "2026-11-24T21:00:00Z"}},
+                      "notes": [{"id": "n20261124210500-1", "text": "Gateway still jams", "at": "2026-11-24T21:05:00Z"}]})
+        code, out = self.e.run(REPORT, self.e.src)
+        self.assertEqual(code, 0, out)
+        self.assertIn("## The Mayor's side", out)
+        self.assertIn("Gateway still jams", out)
+        self.assertIn("### Still open", out)
+        self.assertIn("## The numbers", out)
+        self.assertTrue((self.e.src / "images" / "map-2026-11-24.png").exists(), out)
+        code, out = self.e.run(REPORT, self.e.src, "--prep")
+        self.assertEqual(code, 0, out)
+        self.assertIn("# Prep facts: Riverton", out)
+
+        code, out = self.e.run(REPORT, self.e.src, "--draft", "--date", "2026-11-24")
+        self.assertEqual(code, 0, out)
+        draft = self.e.src / "reports/2026-11-24.md"
+        text = draft.read_text(encoding="utf-8")
+        self.assertIn('note = "n20261124210500-1"', text)
+        self.assertIn('label = "People"', text)
+        self.assertIn("![", text)
+        code, out = self.e.jp("build", self.e.src)
+        self.assertEqual(code, 1)
+        self.assertIn("still has TODO:", out)
+        import re as _re
+        filled = _re.sub(r"TODO: [^\n\"]*", "Answered.", text)
+        draft.write_text(filled, encoding="utf-8")
+        code, out = self.e.jp("build", self.e.src)
+        self.assertEqual(code, 0, out)
+        j = self.e.journal()
+        self.assertEqual(j["replies"]["n20261124210500-1"]["text"], "Answered.")
+        code, out = self.e.run(REPORT, self.e.src, "--draft", "--date", "2026-11-24")
+        self.assertIn("is there already: the draft wasn't written", out)
 
     def test_a_second_build_without_changes_leaves_the_file_alone(self):
         self.e.jp("build", self.e.src)

@@ -20,6 +20,10 @@ usage:
   city.py keep <src> [--date YYYY-MM-DD] keeps a copy of the newest snapshot as <city>/manager/snapshots/<date>.json, so
                                         the next report can compare with it (`--before kept`); <src> is the journal
                                         source folder (<city>/journal)
+  city.py ends <src> [--near X,Z[,R]] [--json]
+                                        the open ends of the city's roads: where a road stops without joining another (a
+                                        dead end, or a street waiting to go on), by street and side, with the piece and
+                                        lanes, and the place for plan files; --near keeps those within R m (500) of X,Z
   city.py streets <src>                 every street name with its road types, lanes and length
   city.py street <src> <name>           one street: its pieces, lanes, heights, tunnels and bridges, traffic flow
   city.py problems <src>                the warning icons by kind, and the streets they're near
@@ -485,6 +489,18 @@ def kept_dir(src):
     return src.parent / "manager" / "snapshots"
 
 
+def latest_kept(src):
+    """The newest copy a report kept, as (path, taken), or None."""
+    d = kept_dir(src)
+    for f in sorted(d.glob("*.json"), reverse=True)[:6] if d and d.is_dir() else []:
+        try:
+            taken = json.loads(f.read_text(encoding="utf-8")).get("taken") or ""
+        except (OSError, ValueError, AttributeError):
+            continue
+        return f, taken
+    return None
+
+
 def before_path(src, before, now):
     """The snapshot to compare with: the session start (the default, or "start"), the newest kept copy taken before
     `now` ("kept"), or a file."""
@@ -507,9 +523,11 @@ def before_path(src, before, now):
     return Path(before).expanduser()
 
 
-def own_road_m(snap):
+def own_road_m(snap, kinds=ROAD_KINDS):
+    """Metres of the city's roads of these kinds (the map's own highways count as highways; a building's own pieces
+    don't count)."""
     return sum(e.get("length", 0) or 0 for e in arr(snap.get("edges"))
-               if isinstance(e, dict) and not e.get("owned") and e.get("kind") in ROAD_KINDS)
+               if isinstance(e, dict) and not e.get("owned") and e.get("kind") in kinds)
 
 
 def number_rows(then, now):
@@ -541,21 +559,23 @@ def number_rows(then, now):
         rows.append({"label": "Money", "before": "unlimited", "after": "unlimited", "change": ""})
     else:
         add("Money", lambda s: city_(s).get("money"), money, lambda d: signed(d, "$"), always=True)
-    has_budget = lambda s: budget(s) and (budget(s).get("totalIncome") or budget(s).get("totalExpenses"))
-    add("Balance a month", lambda s: budget(s).get("balance") if has_budget(s) else None, money, lambda d: signed(d, "$"))
+    has_budget = lambda s: bool(budget(s)) and ("totalIncome" in budget(s) or "totalExpenses" in budget(s))
+    add("Balance a month", lambda s: budget(s).get("balance", 0) if has_budget(s) else None, money, lambda d: signed(d, "$"), always=True)
     add("Income a month", lambda s: budget(s).get("totalIncome") if has_budget(s) else None, money, lambda d: signed(d, "$"))
     add("Expenses a month", lambda s: budget(s).get("totalExpenses") if has_budget(s) else None, money, lambda d: signed(d, "$"))
     add("Happiness", lambda s: obj(s.get("happiness")).get("average", city_(s).get("happiness")), count, plus)
     add("Unemployment", lambda s: obj(s.get("people")).get("unemploymentPercent"), pct, pts)
     add("Free jobs", lambda s: obj(s.get("jobs")).get("free"), count, plus)
     add("Homeless", lambda s: obj(s.get("people")).get("homeless") if s.get("people") else None, count, plus)
-    add("Roads and highways", lambda s: own_road_m(s) if arr(s.get("edges")) else None, km,
-        lambda d: "±0" if abs(d) < 1 else ("+" if d > 0 else "−") + km(abs(d)))
+    km_change = lambda d: "±0" if abs(d) < 1 else ("+" if d > 0 else "−") + km(abs(d))
+    add("Streets", lambda s: own_road_m(s, ("road",)) if arr(s.get("edges")) else None, km, km_change, always=True)
+    add("Highways", lambda s: own_road_m(s, ("highway",)) if arr(s.get("edges")) else None, km, km_change)
     add("Transit lines", lambda s: len(arr(s.get("transit"))) if "transit" in s else None, count, plus)
     add("Warning icons", lambda s: sum(k.get("count", 0) or 0 for k in arr(obj(s.get("problems")).get("kinds")))
         if "problems" in s else None, count, plus)
     add("Map tiles", lambda s: city_(s).get("tiles"), count, plus)
     add("Milestone", lambda s: city_(s).get("milestone"), count, plus)
+    add("Experience", lambda s: city_(s).get("xp"), count, plus)
     return rows
 
 
@@ -687,6 +707,68 @@ def cmd_street(src, name):
     return 0
 
 
+COMPASS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"]
+
+
+def compass(dx, dz):
+    return COMPASS[int((math.degrees(math.atan2(dx, dz)) % 360 + 22.5) // 45) % 8]   # 0 = north (+z), 90 = east
+
+
+def road_ends(snap):
+    """The open ends of the city's roads (the map's own and the Mayor's): a node with one road or highway piece and no
+    link off the map. Each with its street, which end of that street it is, the way the road points as it ends, the
+    piece and its lanes, and its place (for plan files; the Mayor gets the street and the side)."""
+    nodes = {n.get("id"): n for n in arr(snap.get("nodes")) if isinstance(n, dict)}
+    prefabs, titles, streets = arr(snap.get("prefabs")), arr(snap.get("prefabTitles")), arr(snap.get("streets"))
+    inc = defaultdict(list)
+    for e in arr(snap.get("edges")):
+        if isinstance(e, dict) and not e.get("owned") and e.get("kind") in ROAD_KINDS:
+            inc[e.get("a")].append(e)
+            inc[e.get("b")].append(e)
+    groups = street_groups(snap)
+    out = []
+    for nid, es in inc.items():
+        n = nodes.get(nid)
+        if not n or n.get("outside") or len(es) != 1:
+            continue
+        e = es[0]
+        name = name_of(streets, e.get("street")) or ""
+        title = name_of(titles, e.get("prefab")) or name_of(prefabs, e.get("prefab")) or "?"
+        mids = [mid(x) for x in groups.get(name, [])] or [mid(e)]
+        cx, cz = sum(q[0] for q in mids) / len(mids), sum(q[1] for q in mids) / len(mids)
+        x, z = n.get("x", 0) or 0, n.get("z", 0) or 0
+        other = nodes.get(e.get("b") if e.get("a") == nid else e.get("a"))
+        out.append({"street": name, "end": compass(x - cx, z - cz) if math.hypot(x - cx, z - cz) > 1 else "",
+                    "heading": compass(x - other.get("x", 0), z - other.get("z", 0)) if other else "",
+                    "piece": title, "kind": e.get("kind"), "lanes": lanes_text(e), "x": round(x), "z": round(z)})
+    out.sort(key=lambda r: (r["street"] == "", r["street"], r["end"]))
+    return out
+
+
+def cmd_ends(src, as_json=False, near=None):
+    snap = load(snapshot_path(src))
+    if any(t.startswith("edges") for t in arr(snap.get("truncated"))):
+        print("This snapshot has no roads (cut for size), so their ends can't be listed.")
+        return 1
+    rows = road_ends(snap)
+    if near:
+        x0, z0, r0 = near
+        rows = [r for r in rows if math.hypot(r["x"] - x0, r["z"] - z0) <= r0]
+    if as_json:
+        print(json.dumps(rows, ensure_ascii=False))
+        return 0
+    c = obj(snap.get("city"))
+    print(f"# Open road ends in {c.get('name') or '?'}: {len(rows)}\n")
+    print(f"From the snapshot taken {local_time(snap.get('taken'))}. Where a road stops without joining another: a dead end, or "
+          "a street waiting to go on. The place is for plan files; tell the Mayor the street and its end.\n")
+    if rows:
+        print("| Street | End | Points | Piece | Lanes | Place (x, z) |\n|---|---|---|---|---|---|")
+        for r in rows:
+            print(f"| {r['street'] or '(unnamed ' + r['kind'] + ')'} | {r['end'] or '-'} | {r['heading'] or '-'} | {r['piece']} | "
+                  f"{r['lanes']} | {r['x']}, {r['z']} |")
+    return 0
+
+
 STAGE_BEGUN = {"people": 200, "roadKm": 5.0, "buildings": 50}   # below all three: a city just begun
 
 
@@ -753,6 +835,15 @@ def main(argv):
         return cmd_numbers(args[1], before, "--toml" in args)
     if len(args) >= 2 and args[0] == "keep":
         return cmd_keep(args[1], args[args.index("--date") + 1] if "--date" in args and args.index("--date") + 1 < len(args) else None)
+    if len(args) >= 2 and args[0] == "ends":
+        near = None
+        if "--near" in args and args.index("--near") + 1 < len(args):
+            try:
+                v = [float(t) for t in args[args.index("--near") + 1].split(",")]
+                near = (v[0], v[1], v[2] if len(v) > 2 else 500.0)
+            except (ValueError, IndexError):
+                sys.exit("--near takes X,Z or X,Z,R (metres), like --near 120,-340,600")
+        return cmd_ends(args[1], "--json" in args, near)
     if len(args) == 2 and args[0] == "streets":
         return cmd_streets(args[1])
     if len(args) >= 3 and args[0] == "street":

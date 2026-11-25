@@ -16,6 +16,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "skills/city-manager/scripts"))
 import made_up_map as mm  # noqa: E402
+import city  # noqa: E402
 import cityplan  # noqa: E402
 import plan  # noqa: E402
 
@@ -363,6 +364,139 @@ class BuiltCheck(unittest.TestCase):
         self.assertIn('where = { label = "1 Main link", x = 0, z = 0, zoom = ', text)
         self.assertIn("![1 Main link](card-1-main-link.png)", text)
         self.assertTrue(all(re.fullmatch(r"[A-Za-z0-9._-]+", f) for f in files), "picture names the journal accepts")
+
+
+class OneStopReport(unittest.TestCase):
+    """report.py and city.py ends on the made-up map: Main Street ends at its south end (z -150), Old Lane at both
+    ends; a new road built in the second snapshot."""
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="cm-report-"))
+        self.addCleanup(lambda: shutil.rmtree(self.base, ignore_errors=True))
+        then = mm.snapshot()
+        now = mm.snapshot()
+        now["taken"] = "2026-11-24T22:00:00Z"
+        now["city"].update(population=120, money=480000, xp=165)
+        now["city"]["date"] = {"text": "January 2026, 09:00"}
+        now["nodes"].append({"id": 20, "x": -300.0, "z": -400.0, "y": 50.0})
+        now["edges"].append({"id": 130, "prefab": 1, "kind": "road", "a": 7, "b": 20, "street": 3, "length": 410.0,
+                             "pts": mm.bez(0, -150, -300, -400), "lanes": [1, 1]})
+        (self.base / "before.json").write_text(json.dumps(then), encoding="utf-8")
+        (self.base / "city.json").write_text(json.dumps(now), encoding="utf-8")
+        (self.base / "plan.json").write_text(json.dumps({"plans": [{"name": "Now · Streets", "areas": [], "junctions": [], "roads": [
+            road("1 Main link", "Arterial", [[0, 140], [0, -140]], piece="Four-Lane Road"),
+            road("2 South lane", "Local", [[0, -150], [-300, -400]], piece="Gravel Road")]}]}), encoding="utf-8")
+
+    def run_report(self, *extra):
+        import report
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = report.main(["report.py", str(self.base / "city.json"), "--before", str(self.base / "before.json"), *map(str, extra)])
+        return code, out.getvalue()
+
+    def test_everything_in_one_go(self):
+        import tomllib
+        code, text = self.run_report("--plan", self.base / "plan.json", "--images", self.base / "images", "--date", "2026-11-24")
+        self.assertEqual(code, 0, text)
+        for heading in ("# Report facts: Riverton", "## The numbers", "## What changed", "## The plan, built so far", "## Pictures",
+                        "## Open road ends"):
+            self.assertIn(heading, text)
+        self.assertIn("| People | 0 | 120 | +120 |", text)
+        block = text.split("```toml", 1)[1].split("```", 1)[0]
+        rows = {r["label"]: r for r in tomllib.loads(block)["numbers"]}
+        self.assertEqual(rows["Experience"]["change"], "+165")
+        self.assertIn("Built: 410 m", text)
+        self.assertIn("1 Main link", text.split("## The plan, built so far")[1])
+        self.assertTrue((self.base / "images/map-2026-11-24.png").exists())
+        self.assertTrue((self.base / "images/built-2026-11-24.png").exists())
+        self.assertIn("`![The plan, built so far](built-2026-11-24.png)`", text)
+        self.assertIn("| Old Lane | north | north |", text)
+
+    def test_without_a_plan_or_pictures_folder(self):
+        code, text = self.run_report()
+        self.assertEqual(code, 0, text)
+        self.assertNotIn("## The plan, built so far", text)
+        self.assertNotIn("## Pictures", text)
+        self.assertIn("## Open road ends", text)
+
+    def test_road_ends(self):
+        ends = city.road_ends(json.loads((self.base / "city.json").read_text(encoding="utf-8")))
+        self.assertEqual({(r["street"], r["end"]) for r in ends}, {("Old Lane", "north"), ("Old Lane", "east"), ("Old Lane", "south-west")},
+                         "Main Street goes on as the new road; the new piece is named Old Lane too, so the street's middle "
+                         "moves south-west and its old south end is now its east end")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            city.main(["city.py", "ends", str(self.base / "city.json"), "--near", "400,600,100"])
+        self.assertIn("Open road ends in Riverton: 1", out.getvalue())
+
+
+class Grid(unittest.TestCase):
+    """plan.py grid on the made-up map: Main Street runs from (0, 150) south to (0, -150), a Four-Lane Road."""
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="cm-grid-"))
+        self.addCleanup(lambda: shutil.rmtree(self.base, ignore_errors=True))
+        (self.base / "city.json").write_text(json.dumps(mm.snapshot()), encoding="utf-8")
+        self.plan_path = self.base / "plan.json"
+
+    def grid(self, *extra):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = plan.main(["plan.py", "grid", str(self.plan_path), str(self.base / "city.json"), *map(str, extra)])
+        return code, out.getvalue()
+
+    def roads(self, plan_name):
+        doc = json.loads(self.plan_path.read_text(encoding="utf-8"))
+        return {r["name"]: r for p in doc["plans"] if p["name"] == plan_name for r in p["roads"]}
+
+    def test_rows_spaced_by_the_hierarchy_rule(self):
+        code, text = self.grid("--along", "Main Street", "--from", "0,150", "--side", "left", "--rows", "3", "--number", "7",
+                               "--name", "West homes", "--plan", "Now · West homes", "--zone", "Residential")
+        self.assertEqual(code, 0, text)
+        r = self.roads("Now · West homes")
+        self.assertEqual([r[f"7 West homes, {o} street"]["points"] for o in ("first", "second", "third")],
+                         [[[116, 150], [116, -150]], [[228, 150], [228, -150]], [[340, 150], [340, -150]]],
+                         "116 m off a Four-Lane Road (12 + 96 + 8), then 112 m apart; facing south, left is east")
+        self.assertEqual(r["7 West homes, north end street"]["points"], [[0, 150], [340, 150]])
+        self.assertTrue(all(x["piece"] == "Two-Lane Road" and x["class"] == "Local" for x in r.values()))
+        area = json.loads(self.plan_path.read_text(encoding="utf-8"))["plans"][0]["areas"][0]
+        self.assertEqual((area["name"], area["type"]), ("7 West homes", "Residential"))
+
+    def test_running_again_redraws_instead_of_doubling(self):
+        args = ["--along", "Main Street", "--side", "right", "--rows", "2", "--number", "3", "--name", "East", "--plan", "Now · East",
+                "--ends", "none", "--block", "100"]
+        self.grid(*args)
+        first = self.roads("Now · East")
+        self.grid(*args)
+        self.assertEqual(self.roads("Now · East"), first)
+        self.assertIn("3 East, cross street 1", first)
+        self.assertNotIn("3 East, north end street", first)
+
+    def test_a_planned_line_and_bad_options(self):
+        code, text = self.grid("--origin", "-300,-400", "--dir", "1,0", "--length", "200", "--spine-piece", "Two-Lane Road",
+                               "--side", "left", "--rows", "1", "--plan", "Later · Somewhere")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.roads("Later · Somewhere")["New streets, first street"]["points"], [[-300, -288], [-100, -288]],
+                         "112 m off a Two-Lane Road")
+        for bad in (["--along", "Main Street", "--side", "up", "--rows", "2"], ["--along", "Nowhere Road", "--side", "left", "--rows", "2"],
+                    ["--side", "left", "--rows", "2"], ["--along", "Main Street", "--side", "left", "--rows", "40"]):
+            with self.assertRaises(SystemExit):
+                self.grid(*bad)
+
+    def test_prep_facts(self):
+        import report
+        (self.base / "kept.json").write_text((self.base / "city.json").read_text(encoding="utf-8"), encoding="utf-8")
+        self.grid("--along", "Main Street", "--side", "left", "--rows", "1", "--plan", "Now · Streets")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = report.main(["report.py", str(self.base / "city.json"), "--prep", "--plan", str(self.plan_path),
+                                "--before", str(self.base / "kept.json")])
+        text = out.getvalue()
+        self.assertEqual(code, 0, text)
+        self.assertIn("# Prep facts: Riverton", text)
+        self.assertIn("Not played since the last report", text)
+        self.assertIn("## The plan, checked against the newest snapshot", text)
+        self.assertIn("## The guide", text)
 
 if __name__ == "__main__":
     unittest.main()

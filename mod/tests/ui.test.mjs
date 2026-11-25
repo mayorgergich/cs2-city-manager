@@ -417,3 +417,17 @@ test("a step's build card: Show on map and Picture under the step, only for what
     assert.equal(text(T.StepTools({ b, ctx, step: { text: "x", where: { x: "far", z: 1 } } }) || ""), "", "a place needs numbers");
     assert.equal(text(T.StepTools({ b, ctx, step: { text: "x", picture: "../../etc.png", where: { x: 1, z: 2 } } })), "Show on map");
 });
+
+test("a journal started in game says what it is and the one step to get a City Manager", () => {
+    const fresh = { format: 1, city: "Riverton", manager: "", projects: [], reports: [], briefings: [], replies: {}, images: {} };
+    const out = text(h(T.TodayTab, { j: fresh, mayor: {}, ctx: CTX, onOpenProject: () => {} }));
+    assert.match(out, /Your journal is ready/);
+    assert.match(out, /notebook/);
+    assert.match(out, /\/city-manager/);
+    const managed = { ...fresh, manager: "Claude, City Manager" };
+    const out2 = text(h(T.TodayTab, { j: managed, mayor: {}, ctx: CTX, onOpenProject: () => {} }));
+    assert.doesNotMatch(out2, /Your journal is ready/);
+    assert.match(out2, /No briefing yet\. Before you play, ask the City Manager for one: in Claude Code, type \/city-manager\./);
+    const planned = { ...fresh, projects: [{ id: "roads", title: "Roads", status: "active", steps: [] }] };
+    assert.doesNotMatch(text(h(T.TodayTab, { j: planned, mayor: {}, ctx: CTX, onOpenProject: () => {} })), /Your journal is ready/, "a journal with projects isn't new");
+});

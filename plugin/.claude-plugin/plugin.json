@@ -1,7 +1,8 @@
 {
   "name": "city-manager",
-  "version": "0.11.2",
-  "description": "City Manager for Cities: Skylines II. You play, it plans: a briefing before you play, your list and notes in the game's City Manager mod while you play (no AI running), and a report, the next briefing and a build-overlay guide for City Planning Draft after.",
+  "displayName": "City Manager",
+  "version": "0.12.0",
+  "description": "A City Manager for your Cities: Skylines II city. Before you play, it writes tonight's plan into the in-game journal and draws it over your city with City Planning Draft. After you play, it looks at what you built and gets the next plan ready. It never builds anything and never runs while you play.",
   "author": {
     "name": "mayorgergich"
   },

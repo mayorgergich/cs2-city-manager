@@ -29,7 +29,7 @@ I made City Manager because the planning was always my biggest problem in CS2. A
 1. Subscribe. City Planning Draft comes with it.
 2. Install the Claude Code plugin. In the Claude desktop app's Code tab: **Plugins → Add → Add marketplace → Add from a repository**, paste https://github.com/mayorgergich/cs2-city-manager, press **Sync**, then install it. In Claude Code in a terminal: **/plugin install city-manager --marketplace mayorgergich/cs2-city-manager**
 3. In the game, load your city (or make a new one), press **Ctrl+J** and pick *Start a new journal for this city*. That takes the snapshot your City Manager reads from. Save, then close the game or go back to the main menu.
-4. In Claude Code, type **/city-manager:city-manager** and follow along. A new city gets founded properly, with its first roads and planner drafts. A city you already have gets a tour and a plan for what's next.
+4. In Claude Code, type **/city-manager** and follow along. A new city gets founded properly, with its first roads and planner drafts. A city you already have gets a tour and a plan for what's next.
 5. After that, it's the same command before and after every session: a plan before you play, and a report after you press *Done for today* and save. Keep Claude closed while you play.
 
 ## Please read
@@ -51,10 +51,13 @@ Discord: https://discord.gg/Rtea83Gnb9
 	<Screenshot Value="Properties/Screenshots/3-project.png" />
 	<Screenshot Value="Properties/Screenshots/4-notes.png" />
 	<Tag Value="Code Mod" />
-	<ModVersion Value="0.9.0" />
+	<ModVersion Value="0.9.1" />
 	<GameVersion Value="1.6.*" />
 	<Dependency Id="155935" DisplayName="City Planning Draft" />
 	<ChangeLog>
+0.9.1
+- A journal you start in the game now says what it is (a notebook on its own) and the one command that brings in a City Manager: type /city-manager in Claude Code. Starting a journal takes your city's first snapshot by itself.
+
 0.9.0
 - The city snapshot now records the map: its name and theme, the traffic side, the game mode, the New Game options, and every link off the map (road, rail, air, ship, power and water), so the City Manager doesn't have to ask.
 - The build list the City Manager plans from now has the road menu's roundabouts and traffic-light pieces, and names Road Builder roads.

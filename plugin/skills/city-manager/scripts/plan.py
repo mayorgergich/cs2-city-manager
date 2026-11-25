@@ -32,8 +32,21 @@ usage:
       built since the snapshot before (the session start by default; kept: the copy the last report kept), marked,
       with the buildings the Mayor placed.
   plan.py cards PLAN.json <src> --out-dir DIR [--only "<plan>"]... [--width PX]
-      A close-up picture for every numbered item in the Now and Next plans, for its build card, and the journal lines
-      to go with each: the picture line and a Show-on-map place.
+      A close-up picture for every numbered item in the Now and Next plans (an item whose name starts with its step
+      number, like "2 Cedar: ramp down"; others get none), for its build card, and the journal lines to go with each:
+      the step's picture and Show-on-map place.
+
+  plan.py grid PLAN.json <src> --along "<street>" --side left|right --rows N [--start S] [--length L]
+               [--piece "Two-Lane Road"] [--ends both|start|end|none] [--block B] [--zone TYPE]
+               [--plan "Now · <Topic>"] [--number N] [--name WORDS] [--from X,Z]
+      Adds a district's local streets to the plan file: N rows parallel to a street the city has, on its left or right
+      (facing from the end nearest --from, or its first end, to the other), spaced by the road-hierarchy rule (half
+      each road's width + 96 m: 112 m between Two-Lane Roads, 116 m off a Four-Lane Road), from S metres along it for L
+      metres (its length by default); end streets joining the rows, cross streets every B metres, and with --zone a
+      zoning area over the grid (Residential, Commercial, Industrial, Office). Every street is a numbered item with its
+      piece ("7 Riverside, first street"), so it gets a build card. Items of the same name are replaced, so running it
+      again redraws. For a curving or planned street, use --origin X,Z --dir DX,DZ instead (with --length, and
+      --spine-piece "<its piece>" for the spacing).
 
 <src> is a journal source folder, a journal folder in ModsData, or a snapshot file, as for city.py and survey.py.
 
@@ -1072,12 +1085,12 @@ def draw_built(snap, plans, results, out, width=1600, facts=None):
     return out
 
 
-def draw_city_map(snap, out, then=None, view="city", title=None, width=1600, since_label=""):
+def draw_city_map(snap, out, then=None, view="city", title=None, width=1600, since_label="", facts=None):
     """The city now, with what was built since `then` marked."""
     terrain = sv.Terrain(snap)
     net = sv.Network(snap)
     tiles = sv.Tiles(snap)
-    facts = sv.survey(snap)
+    facts = facts or sv.survey(snap)
     st = facts["start"]
     c = obj(snap.get("city"))
     own = [e for e in net.by_kind("road") if not any(net.nodes.get(e.get(k), {}).get("outside") for k in ("a", "b"))]
@@ -1169,7 +1182,7 @@ def main(argv):
     args = argv[1:]
     if len(args) >= 2 and args[0] == "map":
         return main_map(args[1], args[2:])
-    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards"):
+    if len(args) < 3 or args[0] not in ("check", "draw", "built", "cards", "grid"):
         print(__doc__)
         return 2
     cmd, plan_path, src = args[0], args[1], args[2]
@@ -1178,6 +1191,8 @@ def main(argv):
     def opt(flag, default=None):
         return rest[rest.index(flag) + 1] if flag in rest and rest.index(flag) + 1 < len(rest) else default
 
+    if cmd == "grid":
+        return main_grid(plan_path, city.load(sv.snapshot_file(src)), rest, opt)
     if cmd in ("built", "cards"):
         path = sv.snapshot_file(src, "--start" in rest)
         snap = city.load(path)
@@ -1227,6 +1242,137 @@ def main(argv):
         print(f"{path.name} has no terrain part (City Manager 0.6 or later writes it), so there's nothing to draw on.")
         return 1
     print(f"wrote {out}")
+    return 0
+
+
+# --- a district's local streets, generated from a street the city has
+
+ROAD_WIDTH = {2: 16.0, 4: 24.0, 6: 32.0}   # road-hierarchy.md: Two-Lane 16 m, Four-Lane 24 m, Six-Lane 32 m
+LOT_DEPTHS = 96.0                          # two full-depth lots back to back
+ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth", "eleventh",
+            "twelfth"]
+
+
+def width_of(title, lanes=None):
+    """A road's width for spacing: from its lanes, or the lane word in its menu name."""
+    if lanes:
+        return ROAD_WIDTH.get(sum(lanes), 16.0 if sum(lanes) <= 2 else 24.0 if sum(lanes) <= 4 else 32.0)
+    t = (title or "").casefold()
+    for word, w in (("six-lane", 32.0), ("four-lane", 24.0), ("two-lane", 16.0)):
+        if word in t:
+            return w
+    return 16.0
+
+
+def spine_of(snap, street, near=None):
+    """A street's straight line: (origin, unit along, length, width), from its two farthest-apart points, facing from
+    the end nearest `near` (or its first end) to the other."""
+    groups = city.street_groups(snap)
+    names = [n for n in groups if n.casefold() == street.casefold()] or [n for n in groups if street.casefold() in n.casefold()]
+    if not names:
+        raise SystemExit(f"No street named {street!r} in the snapshot (`city.py streets` lists them).")
+    es = groups[names[0]]
+    pts = [tuple(q[:2]) for e in es for q in arr(e.get("pts"))]
+    a, b = max(((p, q) for p in pts for q in pts), key=lambda pq: math.dist(*pq))
+    if near is not None and math.dist(b, near) < math.dist(a, near):
+        a, b = b, a
+    L = math.dist(a, b)
+    if L < 1:
+        raise SystemExit(f"{names[0]} is too short to build along.")
+    u = ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
+    lanes = Counter(tuple(arr(e.get("lanes"))) for e in es if len(arr(e.get("lanes"))) == 2).most_common(1)
+    title = Counter(e["prefabName"] for e in es).most_common(1)[0][0]
+    return a, u, L, width_of(title, lanes[0][0] if lanes else None), names[0]
+
+
+def make_grid(origin, u, length, spine_w, side, rows, start=0.0, along=None, piece="Two-Lane Road", ends="both",
+              block=None, number=None, name="New streets", zone=None):
+    """The streets of a grid beside a straight spine. Returns (roads, area or None)."""
+    n = (-u[1], u[0]) if side == "left" else (u[1], -u[0])
+    w = width_of(piece)
+    at = lambda s_, t_: [round(origin[0] + s_ * u[0] + t_ * n[0]), round(origin[1] + s_ * u[1] + t_ * n[1])]
+    s0, s1 = start, start + (along if along else length - start)
+    offsets = [spine_w / 2 + LOT_DEPTHS + w / 2 + i * (w + LOT_DEPTHS) for i in range(rows)]
+    tag = (f"{number} " if number is not None else "") + name
+    item = lambda label, pts: {"name": f"{tag}, {label}" if label[0].islower() else f"{tag} {label}", "class": "Local",
+                               "piece": piece, "points": pts}
+    roads = [item(f"{ORDINALS[i] if i < len(ORDINALS) else str(i + 1) + 'th'} street", [at(s0, t), at(s1, t)])
+             for i, t in enumerate(offsets)]
+    word = lambda s_: sv.direction(*((u[0], u[1]) if s_ > (s0 + s1) / 2 else (-u[0], -u[1])))
+    if ends in ("both", "start"):
+        roads.append(item(f"{word(s0)} end street", [at(s0, 0), at(s0, offsets[-1])]))
+    if ends in ("both", "end"):
+        roads.append(item(f"{word(s1)} end street", [at(s1, 0), at(s1, offsets[-1])]))
+    if block:
+        k, s_ = 1, s0 + block
+        while s_ < s1 - block / 2:
+            roads.append(item(f"cross street {k}", [at(s_, 0), at(s_, offsets[-1])]))
+            k, s_ = k + 1, s_ + block
+    area = None
+    if zone:
+        edge = spine_w / 2 + 2
+        far = offsets[-1] + w / 2 + LOT_DEPTHS / 2
+        area = {"name": tag, "type": zone, "polygon": [at(s0, edge), at(s1, edge), at(s1, far), at(s0, far)]}
+    return roads, area
+
+
+def add_to_plan(path, plan_name, roads, area=None):
+    """Puts items into a plan of the file (made if missing), replacing items of the same name."""
+    p = Path(path)
+    doc = json.loads(p.read_text(encoding="utf-8-sig")) if p.exists() else {"plans": []}
+    if not isinstance(doc, dict) or not isinstance(doc.get("plans"), list):
+        raise SystemExit(f"{p.name} isn't a plan file with a plans list.")
+    target = next((q for q in doc["plans"] if isinstance(q, dict) and q.get("name") == plan_name), None)
+    if target is None:
+        target = {"name": plan_name, "roads": [], "areas": [], "junctions": []}
+        doc["plans"].insert(0, target)
+    names = {r["name"] for r in roads} | ({area["name"]} if area else set())
+    target["roads"] = [r for r in arr(target.get("roads")) if not (isinstance(r, dict) and r.get("name") in names)] + roads
+    if area:
+        target["areas"] = [a for a in arr(target.get("areas")) if not (isinstance(a, dict) and a.get("name") in names)] + [area]
+    target.setdefault("junctions", [])
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, p)
+    return target
+
+
+def main_grid(plan_path, snap, rest, opt):
+    def pair(text, what):
+        try:
+            a, b = (float(v) for v in text.split(","))
+            return a, b
+        except (ValueError, AttributeError):
+            raise SystemExit(f"{what} takes two numbers, like 120,-340")
+    side, rows = opt("--side"), opt("--rows")
+    if side not in ("left", "right") or not (rows or "").isdigit() or not 1 <= int(rows) <= 12:
+        raise SystemExit("grid needs --side left|right and --rows 1 to 12")
+    near = pair(opt("--from"), "--from") if opt("--from") else None
+    if opt("--along"):
+        origin, u, L, spine_w, spine = spine_of(snap, opt("--along"), near)
+    elif opt("--origin") and opt("--dir"):
+        origin, d = pair(opt("--origin"), "--origin"), pair(opt("--dir"), "--dir")
+        m = math.hypot(*d) or 1.0
+        u, L, spine_w, spine = (d[0] / m, d[1] / m), float(opt("--length", 400)), width_of(opt("--spine-piece", "")), "the line given"
+    else:
+        raise SystemExit("grid needs --along \"<street>\", or --origin X,Z with --dir DX,DZ")
+    start = float(opt("--start", 0))
+    along = float(opt("--length")) if opt("--length") else None
+    if start < 0 or start >= L and not opt("--origin"):
+        raise SystemExit(f"--start must be between 0 and the street's length ({L:.0f} m)")
+    roads, area = make_grid(origin, u, L, spine_w, side, int(rows), start, along, opt("--piece", "Two-Lane Road"),
+                            opt("--ends", "both"), float(opt("--block")) if opt("--block") else None,
+                            opt("--number"), opt("--name", "New streets"), opt("--zone"))
+    plan_name = opt("--plan", "Now · New streets")
+    add_to_plan(plan_path, plan_name, roads, area)
+    first = roads[0]["points"]
+    print(f"Added to {Path(plan_path).name}, plan {plan_name!r}: {len(roads)} streets beside {spine} (spine {spine_w:.0f} m wide), "
+          f"rows {spine_w / 2 + LOT_DEPTHS + width_of(opt('--piece', 'Two-Lane Road')) / 2:.0f} m from it and "
+          f"{width_of(opt('--piece', 'Two-Lane Road')) + LOT_DEPTHS:.0f} m apart, {math.dist(*first):.0f} m long"
+          + (f", and the {area['type']} area {area['name']!r}" if area else "") + ".")
+    for r in roads:
+        print(f"- {r['name']} ({r['piece']}): {r['points'][0]} → {r['points'][-1]}")
+    print("\nNext: `plan.py check` (and `draw`), as for any plan.")
     return 0
 
 

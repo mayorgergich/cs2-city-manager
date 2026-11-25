@@ -67,7 +67,7 @@ hi on the Discord.
 
 ## How it works
 
-1. **Before you play,** open Claude Code and type `/city-manager:city-manager`, then tell it you're about to play. It
+1. **Before you play,** open Claude Code and type `/city-manager`, then tell it you're about to play. It
    checks where your city's at and puts tonight's plan in your journal.
 2. **Close Claude and play.** Press Ctrl+J in the game and your plan is there. Follow it as much or as little as you
    want, and jot down a note whenever something bugs you.
@@ -98,8 +98,9 @@ journal by hand ([format/README.md](format/README.md)).
 1. **Get the mod.** Subscribe to [City Manager on Paradox Mods](https://mods.paradoxplaza.com/mods/169373/Windows) in the
    Paradox Launcher or on the website. City Planning Draft comes with it. Add mods in the launcher, not from inside the
    game. (Want to build it yourself? See [docs/DEVELOPING.md](docs/DEVELOPING.md).)
-2. **Install uv.** On Windows: `winget install astral-sh.uv`. Anywhere else: the one-line install on
-   [docs.astral.sh/uv](https://docs.astral.sh/uv/).
+2. **uv** (it runs the plugin's scripts). Don't have it? Your City Manager offers to install it the first time, with
+   one command you approve. Or do it yourself: on Windows `winget install --id=astral-sh.uv -e`, anywhere else the
+   one-line install on [docs.astral.sh/uv](https://docs.astral.sh/uv/).
 3. **Install the plugin.**
    - **In the Claude desktop app** (Code tab): open the plugins menu (**+** next to the prompt box), then **Add** →
      **Add marketplace** → **Add from a repository**, paste `https://github.com/mayorgergich/cs2-city-manager`, press
@@ -112,8 +113,9 @@ journal by hand ([format/README.md](format/README.md)).
 4. **Start a journal in the game.** Load your city (or make a new one), press **Ctrl+J** and pick *Start a new journal
    for this city*. That's it: the mod takes the snapshot your City Manager reads from right away. Save, then close the
    game or go back to the main menu.
-5. **Meet your City Manager.** In Claude Code, type `/city-manager:city-manager`. It asks whether you're continuing a
-   city or starting a new one, and takes it from there. A new city gets founded properly: what kind of city you want,
+5. **Meet your City Manager.** In Claude Code, type `/city-manager` (or `/city-manager:city-manager` if the short one
+   doesn't work). It asks what brings you in (about to play, just played, a new city, or one you already have) and
+   takes it from there. A new city gets founded properly: what kind of city you want,
    its first roads and planner drafts. A city you already have gets a tour, a plan for what's next, and your
    half-finished plans turned into projects. Haven't made the city yet? Just say so, and it'll help you pick a map
    first.

@@ -34,7 +34,8 @@ or junction to use. For every item in a Now or Next plan, the journal step gives
   never from memory, and say when a choice is a suggestion rather than a must;
 - **a close-up picture** of that spot (the plan drawn over the city, the item marked), on its own line in the step's
   project page or the briefing: `plan.py cards plan.json <city>/journal --out-dir <city>/journal/images` draws one for
-  every numbered Now and Next item and prints, for its journal step, `picture = "…"` and `where = {…}`: City Manager
+  every numbered Now and Next item (an item whose name starts with its step number, like `2 Cedar: ramp down`; items
+  without a number, and Later, Base and Done plans, get no card) and prints, for its journal step, `picture = "…"` and `where = {…}`: City Manager
   0.9 shows them as Picture and Show on map buttons under the step (an older mod ignores them, so for an older mod put
   the picture on its own line in the project page as well);
 - **the same number and words as the plan item**: plan item `2 Cedar: ramp down` and journal step
