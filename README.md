@@ -14,10 +14,10 @@ while Claude runs, or push to build things for you. I still want to play the gam
 the way: someone to organize my ideas and guide my long-term projects.
 
 So that's what this is: a mod and a Claude Code plugin that help you plan your city, keep a journal and tick off to-do
-lists. It can even draw detailed plans for your whole map. You still get to actually play: be creative and change
+lists with the in-game journal mod. It can even draw detailed plans for your whole map if that's what you're looking for. You still get to actually play: be creative and change
 things up on the fly, without an AI looking over your shoulder while you play.
 
-## Made with AI, and not reviewed
+## Made with AI with limited human review
 
 Please read this before you install it. **I'm not a coder.** I designed City Manager, decided how it should work, and
 tested every version in my own city, but the code was written by Claude (Anthropic's AI) through Claude Code, working
