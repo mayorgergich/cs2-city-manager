@@ -26,6 +26,9 @@ usage:
                                         lanes, and the place for plan files; --near keeps those within R m (500) of X,Z
   city.py streets <src>                 every street name with its road types, lanes and length
   city.py street <src> <name>           one street: its pieces, lanes, heights, tunnels and bridges, traffic flow
+  city.py attention <src>               what needs attention, from the snapshot's own numbers: money running out, power,
+                                        water or sewage short, services full, homeless, jobs, happiness and what drags it
+                                        down, slow streets, crowded transit, demand and what holds it back, warning icons
   city.py problems <src>                the warning icons by kind, and the streets they're near
   city.py services <src>                service budgets, and each service building: how full, how efficient
   city.py catalogue <src>               the road, track and junction pieces the Mayor can place now, by menu, with
@@ -351,6 +354,228 @@ def cmd_services(src):
             fill = f"{use.get('now', 0):,} of {use.get('max', 0):,} {use.get('what')} ({full:.0%})" if full >= 0 else "–"
             print(f"| {b.get('name') or '?'} | {near.near(b.get('x', 0), b.get('z', 0)) or '–'} | {fill} | "
                   f"{str(b['efficiency']) + '%' if 'efficiency' in b else '–'} |")
+    return 0
+
+
+# --- what needs attention: the snapshot's own numbers, checked against plain thresholds
+
+DEMAND_WORDS = {"residentialLow": "low-density homes", "residentialMedium": "medium-density homes",
+                "residentialHigh": "high-density homes", "commercial": "shops", "industrial": "industry",
+                "office": "offices", "storage": "warehouses"}
+DEMAND_FACTORS = {"StorageLevels": "full warehouses", "UneducatedWorkforce": "too few uneducated workers",
+                  "EducatedWorkforce": "too few educated workers", "CompanyWealth": "companies' money",
+                  "LocalDemand": "local customers", "Unemployment": "unemployment", "FreeWorkplaces": "empty jobs",
+                  "Happiness": "happiness", "Homelessness": "homelessness", "TouristDemand": "tourists",
+                  "LocalInputs": "local materials", "Taxes": "taxes", "Students": "students",
+                  "EmptyBuildings": "empty buildings", "EmptyZones": "empty zoned land", "PoorZoneLocation": "poor locations",
+                  "PetrolLocalDemand": "fuel demand", "Warehouses": "warehouses"}   # Game.Simulation.DemandFactor
+HAPPINESS_FACTORS = {"Telecom": "internet", "Crime": "crime", "AirPollution": "air pollution", "Apartment": "homes",
+                     "Electricity": "electricity", "Healthcare": "healthcare", "GroundPollution": "ground pollution",
+                     "NoisePollution": "noise", "Water": "water", "WaterPollution": "water pollution", "Sewage": "sewage",
+                     "Garbage": "garbage", "Entertainment": "entertainment", "Education": "education", "Mail": "mail",
+                     "Welfare": "welfare", "Leisure": "leisure", "Tax": "taxes", "Buildings": "buildings",
+                     "Consumption": "shopping", "TrafficPenalty": "traffic", "DeathPenalty": "deaths",
+                     "Homelessness": "homelessness", "ElectricityFee": "the electricity fee", "WaterFee": "the water fee",
+                     "Unemployment": "unemployment"}   # Game.Simulation.CitizenHappinessSystem.HappinessFactor
+EDUCATION = ["uneducated", "poorly educated", "educated", "well-educated", "highly educated"]
+FULL, NEARLY_FULL = 0.95, 0.85            # a service building's use of its room
+SLOW, VERY_SLOW = 60, 40                  # a road's traffic flow, % of its free-flow speed
+AREA_ORDER = ["Money", "Power", "Water", "Sewage", "Services", "Homeless", "Jobs", "Happiness", "Traffic", "Transit",
+              "Demand", "Buildings", "Warning icons"]
+
+
+def words(name, table):
+    return table.get(name) or re.sub(r"(?<!^)(?=[A-Z])", " ", str(name)).lower()
+
+
+def attention(snap):
+    """What the Manager should look at, from the snapshot's own numbers: [(level, area, text)], level "fix" (act on it
+    in the next session) or "watch". Only parts the snapshot has are checked; nothing is guessed."""
+    out = []
+    add = lambda level, area, text: out.append((level, area, text))
+    c, b = obj(snap.get("city")), obj(snap.get("budget"))
+    near = Streets(snap)
+    streets = arr(snap.get("streets"))
+
+    # money
+    bal = b.get("balance", (b.get("totalIncome") or 0) - (b.get("totalExpenses") or 0)) if b else None
+    if b and not c.get("unlimitedMoney") and isinstance(bal, (int, float)) and bal < 0 and (c.get("money") or 0) / -bal < 36:
+        cash = c.get("money") or 0
+        months = cash / -bal
+        costs = sorted(((k, v) for k, v in obj(b.get("expenses")).items() if v), key=lambda kv: -kv[1])[:3]
+        add("fix" if months < 12 else "watch", "Money",
+            f"losing {money(-bal)} a month: {money(cash)} lasts about {months:,.0f} months at this rate"
+            + (" (biggest costs: " + ", ".join(f"{words(k, {})} {money(v)}" for k, v in costs) + ")" if costs else ""))
+    lo = obj(snap.get("loan"))
+    if lo.get("amount"):
+        add("watch", "Money", f"a loan of {money(lo['amount'])} at {lo.get('interestPercent', '?')}% ({money(lo.get('monthlyCost'))} a month)")
+
+    # utilities
+    el = obj(obj(snap.get("utilities")).get("electricity"))
+    use, made, got = el.get("consumption") or 0, el.get("production") or 0, el.get("fulfilled")
+    if use > 0:
+        if isinstance(got, (int, float)) and got < use * 0.98:
+            add("fix", "Power", f"short: the city needs {power(use)} and gets {power(got)}")
+        elif made < use:
+            cost = obj(b.get("expenses")).get("ImportElectricity")
+            add("watch", "Power", (f"all {power(use)} comes from outside" if made <= 0 else
+                                   f"makes {power(made)} of the {power(use)} it uses; {power(el.get('import'))} comes from outside")
+                + (f", at {money(cost)} a month" if cost else ", which costs money"))
+        elif use > made * 0.9:
+            add("watch", "Power", f"uses {power(use)} of the {power(made)} it makes: build more before the city grows")
+    wa = obj(obj(snap.get("utilities")).get("water"))
+    for area, cap, need, unit in (("Water", "freshCapacity", "freshConsumption", "fresh water"),
+                                  ("Sewage", "sewageCapacity", "sewageConsumption", "sewage")):
+        have, want = wa.get(cap) or 0, wa.get(need) or 0
+        if want > 0 and want > have:
+            add("fix", area, f"short: {want:,} m³ of {unit} for {have:,} m³ of room")
+        elif want > 0 and want > have * 0.9:
+            add("watch", area, f"{want:,} of {have:,} m³ used: build more before the city grows")
+
+    # services: full buildings, cut budgets
+    full = defaultdict(list)
+    for x in arr(snap.get("buildings")):
+        u = obj(x.get("use"))
+        if u.get("max"):
+            share = (u.get("now") or 0) / u["max"]
+            if share >= NEARLY_FULL:
+                full[(u.get("what") or "?", share >= FULL)].append((share, x))
+        elif x.get("kind") == "service" and isinstance(x.get("efficiency"), (int, float)) and x["efficiency"] < 60:
+            full[("efficiency", False)].append((x["efficiency"] / 100, x))
+    for (what, is_full), items in sorted(full.items(), key=lambda kv: (not kv[0][1], kv[0][0])):
+        items.sort(key=lambda t: -t[0])
+        names = ", ".join(f"{x.get('name') or '?'}" + (f" near {near.near(x.get('x', 0), x.get('z', 0))}" if near.near(x.get('x', 0), x.get('z', 0)) else "")
+                          + f" ({share:.0%})" for share, x in items[:3]) + (f" and {len(items) - 3} more" if len(items) > 3 else "")
+        if what == "efficiency":
+            add("watch", "Services", f"running below 60%: {names}")
+        else:
+            add("fix" if is_full else "watch", "Services", f"{'full' if is_full else 'nearly full'} ({what}): {names}")
+    for x in arr(snap.get("services")):
+        if isinstance(x.get("budget"), (int, float)) and x["budget"] < 100 and (x.get("efficiency") or 100) < 100:
+            add("watch", "Services", f"{x.get('title')}: budget at {x['budget']}%, so it works at {x.get('efficiency')}%")
+
+    # people and jobs
+    pe, jo = obj(snap.get("people")), obj(snap.get("jobs"))
+    residents = pe.get("residents") or c.get("population") or 0
+    if pe.get("homeless"):
+        add("fix" if pe["homeless"] >= max(20, residents * 0.01) else "watch", "Homeless",
+            f"{pe['homeless']:,} people ({pe.get('homelessHouseholds', 0):,} households) have no home: zone or free up homes")
+    un = pe.get("unemploymentPercent")
+    total, free = jo.get("total") or 0, jo.get("free") or 0
+    fe = arr(jo.get("freeByEducation"))
+    lvl = max(range(len(fe)), key=lambda i: fe[i] or 0) if fe and any(fe) else None
+    if isinstance(un, (int, float)) and residents and un >= 6:
+        able, working = pe.get("workable") or 0, pe.get("workers") or 0
+        looking = max(able - working, 0)
+        text = f"unemployment {un:.1f}%" + (f" ({looking:,} of {able:,} who could work)" if able else "")
+        if looking and free >= 0.2 * looking and lvl is not None and lvl < len(EDUCATION):
+            text += (f", yet {free:,} jobs are empty, most of them for {EDUCATION[lvl]} workers ({fe[lvl]:,}): more jobs that fit "
+                     "the people here, or schools, as much as more jobs")
+        else:
+            text += ": the city needs jobs (shops, industry, offices)"
+        add("fix" if un >= 10 else "watch", "Jobs", text)
+    if total and free / total >= 0.25 and (un or 0) < 5:
+        add("watch", "Jobs", f"{free:,} of {total:,} jobs are empty: not enough workers"
+            + (f", mostly for {EDUCATION[lvl]} people ({fe[lvl]:,})" if lvl is not None and lvl < len(EDUCATION) else ""))
+
+    # happiness
+    ha = obj(snap.get("happiness"))
+    avg = ha.get("average")
+    bad = [f for f in arr(ha.get("factors")) if isinstance(f, dict) and (f.get("points") or 0) <= -2]
+    bad.sort(key=lambda f: f.get("points") or 0)
+    if residents and isinstance(avg, (int, float)) and (avg < 60 or any((f.get("points") or 0) <= -5 for f in bad)):
+        why = ", ".join(f"{words(f.get('factor'), HAPPINESS_FACTORS)} ({f.get('points'):+d})" for f in bad[:4])
+        add("fix" if avg < 50 else "watch", "Happiness", f"{avg}" + (f": pulled down by {why}" if why else ""))
+
+    # traffic, by street
+    slow = defaultdict(lambda: [101, 0.0])
+    for e in arr(snap.get("edges")):
+        fl = e.get("flow")
+        if e.get("kind") in ROAD_KINDS and not e.get("owned") and isinstance(fl, (int, float)) and fl <= SLOW and (e.get("volume") or 0) > 0:
+            name = name_of(streets, e.get("street")) or near.near(*mid(e)) or "an unnamed road"
+            slow[name][0] = min(slow[name][0], fl)
+            slow[name][1] += e.get("length") or 0
+    ranked = sorted(slow.items(), key=lambda kv: kv[1][0])
+    worst = [(n, fl, L) for n, (fl, L) in ranked if fl <= VERY_SLOW]
+    rest = [(n, fl, L) for n, (fl, L) in ranked if fl > VERY_SLOW]
+    show = lambda items: ", ".join(f"{n} ({fl}%, {km(L)})" for n, fl, L in items)
+    if worst:
+        add("fix", "Traffic", f"{len(worst)} street{'s' if len(worst) != 1 else ''} below {VERY_SLOW}% of free-flow speed: "
+            + show(worst[:4]) + (f" and {len(worst) - 4} more" if len(worst) > 4 else ""))
+    if rest:
+        add("watch", "Traffic", f"{len(rest)} more below {SLOW}%: " + show(rest[:3]) + (f" and {len(rest) - 3} more" if len(rest) > 3 else "")
+            + " (`city.py street <name>` for one street)")
+
+    # transit
+    for ln in arr(snap.get("transit")):
+        if not isinstance(ln, dict):
+            continue
+        nm = ln.get("name") or f"{ln.get('kind', 'a')} line"
+        if ln.get("active") is False or ln.get("vehicles") == 0:
+            add("watch", "Transit", f"{nm} isn't running (no vehicles)")
+        elif (ln.get("usagePercent") or 0) >= 90:
+            add("watch", "Transit", f"{nm} is {ln['usagePercent']:.0f}% full: add vehicles")
+        crowd = [st for st in arr(ln.get("stops")) if isinstance(st, dict) and (st.get("waiting") or 0) >= 40]
+        if crowd:
+            st = max(crowd, key=lambda s_: s_.get("waiting") or 0)
+            add("watch", "Transit", f"{nm}: {st['waiting']:,} waiting at {st.get('name') or 'a stop'}"
+                + (f" and {len(crowd) - 1} more busy stops" if len(crowd) > 1 else ""))
+
+    # demand: high ones to zone; low ones only with the game's own reason
+    de = obj(snap.get("demand"))
+    high = [DEMAND_WORDS.get(k, k) for k in DEMAND_WORDS if isinstance(de.get(k), (int, float)) and de[k] >= 60]
+    if high:
+        add("watch", "Demand", "high for " + ", ".join(high) + ": room to zone more")
+    for k in DEMAND_WORDS:
+        v = de.get(k)
+        held = sorted(((f, pts) for f, pts in obj(obj(de.get("factors")).get(k)).items()
+                       if isinstance(pts, (int, float)) and pts < 0 and f != "BuildingDemand"), key=lambda fp: fp[1])
+        if isinstance(v, (int, float)) and v <= 10 and held and residents:
+            add("watch", "Demand", f"low for {DEMAND_WORDS[k]} ({v}): held back by "
+                + ", ".join(words(f, DEMAND_FACTORS) for f, _ in held[:3]))
+
+    # buildings
+    kinds = Counter("abandoned" if x.get("abandoned") else "condemned" for x in arr(snap.get("buildings")) if x.get("abandoned") or x.get("condemned"))
+    if kinds:
+        add("watch", "Buildings", ", ".join(f"{n:,} {k}" for k, n in kinds.most_common()))
+
+    # the game's warning icons not already covered
+    pr = obj(snap.get("problems"))
+    kinds_ = arr(pr.get("kinds"))
+    if kinds_:
+        places = defaultdict(Counter)
+        for it in arr(pr.get("items")):
+            if isinstance(it, dict):
+                where = name_of(streets, it.get("street")) if it.get("on") == "road" else None
+                places[it.get("kind")][where or near.near(it.get("x", 0), it.get("z", 0)) or "?"] += 1
+        top = sorted(enumerate(kinds_), key=lambda ik: -(ik[1].get("count") or 0))[:5]
+        for i, k in top:
+            at = ", ".join(n for n, _ in places[i].most_common(2) if n != "?")
+            add("fix" if (k.get("count") or 0) >= 20 else "watch", "Warning icons",
+                f"{k.get('title')} ×{k.get('count', 0)}" + (f" (near {at})" if at else ""))
+
+    order = {a: i for i, a in enumerate(AREA_ORDER)}
+    out.sort(key=lambda t: (t[0] != "fix", order.get(t[1], 99)))
+    return out
+
+
+def attention_markdown(snap, heading="## What needs attention"):
+    items = attention(snap)
+    lines = [heading, ""]
+    if not items:
+        lines.append("Nothing stands out: no money trouble, no shortages, nothing full, no slow streets, no warning icons.")
+    for level, title in (("fix", "Fix first"), ("watch", "Keep an eye on")):
+        group = [(a, t) for lv, a, t in items if lv == level]
+        if group:
+            lines += [f"**{title}**", ""] + [f"- {a}: {t}" for a, t in group] + [""]
+    lines.append("From the snapshot's own numbers (traffic below 60% of free flow, buildings 85% full and up, utilities "
+                 "within 10%); it can't see pollution near homes or where services don't reach.")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def cmd_attention(src):
+    snap = load(snapshot_path(src))
+    print(attention_markdown(snap, f"# What needs attention: {obj(snap.get('city')).get('name') or '?'} ({local_time(snap.get('taken'))})"))
     return 0
 
 
@@ -850,6 +1075,8 @@ def main(argv):
         return cmd_street(args[1], " ".join(args[2:]))
     if len(args) >= 2 and args[0] == "stage" and set(args[2:]) <= {"--json"}:
         return cmd_stage(args[1], "--json" in args)
+    if len(args) == 2 and args[0] == "attention":
+        return cmd_attention(args[1])
     if len(args) == 2 and args[0] in ("problems", "services", "catalogue"):
         return {"problems": cmd_problems, "services": cmd_services, "catalogue": cmd_catalogue}[args[0]](args[1])
     print(__doc__)

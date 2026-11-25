@@ -5,8 +5,9 @@
 # ///
 """Everything the report needs from the city, in one go: the numbers against the last report (a table, and the
 report's [[numbers]] entries), what was built, changed and removed, how far the plan has got (built, partly, not yet,
-built differently), a fresh map and a picture of the plan's progress in the journal's images folder, and the open road
-ends the next plan can start from. Run it beside `journal.py mayor` (the Mayor's side: ticks, notes, the wrap-up); the
+built differently), what needs attention (money, power, water, full services, jobs, happiness and what drags it down,
+slow streets, crowded transit, demand and what holds it back, warning icons), a fresh map and a picture of the plan's
+progress in the journal's images folder, and the open road ends the next plan can start from. Run it beside `journal.py mayor` (the Mayor's side: ticks, notes, the wrap-up); the
 two together are the report's facts. It only reads the city, and writes nothing but the two pictures.
 
 usage:
@@ -18,8 +19,8 @@ usage:
       City Manager's own words go. `journal.py build` refuses a page with a TODO: left in it.
   report.py <src> --prep [--plan PLAN.json]
       The briefing's facts: what the Mayor added since the last report, what's still open, whether the city was played
-      since, the plan checked against the newest snapshot (locked pieces, steep grades, crossings), and whether the
-      city's newest guide is the one the planner's Import will load.
+      since, what needs attention now (for the briefing's tasks), the plan checked against the newest snapshot (locked
+      pieces, steep grades, crossings), and whether the city's newest guide is the one the planner's Import will load.
 
 <src> is the city's journal source folder (<city>/journal), as for city.py; a snapshot file works too, with --images.
 Defaults: --before kept (the copy the last report kept; the session start when there's none), --plan
@@ -137,6 +138,9 @@ def main(argv):
     built_results = None
     print("## What changed\n")
     print(strip_heading(changes) + "\n")
+
+    # what needs attention
+    print(city.attention_markdown(snap))
 
     # the plan, built so far
     built_md = None
@@ -256,7 +260,7 @@ def write_draft(src, date, then, snap, changes_md, built_results, pictures):
                 out.append(f"- **Wrap-up, {k}:** {str(v).strip()[:300]}: TODO: the answer")
     if not notes and not wraps:
         out.append("Nothing new in the journal this time.")
-    out += ["", "## What I see", "", "TODO: the problems that matter, by street, with a picture where it helps.", "",
+    out += ["", "## What I see", "", "TODO: the problems that matter, by street (start from What needs attention), with a picture where it helps.", "",
             "## Decisions for next time", "", "TODO: at most two, as questions with options.", ""]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(out), encoding="utf-8")
@@ -289,6 +293,7 @@ def prep(src, is_source, snap, now_path, then_path, plan_path, name):
         _, table = captured(city.cmd_numbers, src, "kept", False)
         print(strip_heading(table) + "\n")
         print("The city was played since the last report: write that report first (session-loop.md).\n")
+    print(city.attention_markdown(snap, "## What needs attention now"))
     # the plan, checked
     if plan_path and Path(plan_path).exists():
         plans = plan.load_plans(plan_path)
