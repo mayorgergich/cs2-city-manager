@@ -49,7 +49,7 @@ else too.
 - [x] Works on its own as a notebook, without Claude
 
 **Between sessions (the plugin, with Claude Code)**
-- [x] A briefing before you play: a short task list and your projects' next steps
+- [x] A briefing before you play: a short task list and your projects' next steps, sized to the time you say you have
 - [x] A post-game review after you play: what you built, an answer to every note, what's still open, and the next plan
 - [x] Plans drawn over your city with City Planning Draft: numbered build steps with the exact road pieces and
       junctions by their menu names, named so you always know which is which (`Riverton 4`, `Now · Main street`)
@@ -64,9 +64,11 @@ else too.
 
 **Coming next**
 - [ ] Reports straight from the snapshot: your numbers against last session, a fresh map, and steps checked in the city
+- [ ] Build steps you can jump to: each step with its own picture and a *Show on map* spot
 - [ ] *Show in planner*: open a project's plan in City Planning Draft with one click
 - [ ] Notes about the building, road or district you've selected, and notes marked as questions for the City Manager
-- [ ] A briefing that fits the time you have ("about an hour tonight")
+- [ ] Text that follows the game's text size setting
+- [ ] Roundabouts and Road Builder roads named in the build steps
 
 **Later**
 - [ ] Findings that stay tracked from report to report (a road-hierarchy check first), and trends over many sessions
