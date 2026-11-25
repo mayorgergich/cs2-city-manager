@@ -87,9 +87,16 @@ both pictures and read `survey.json` for the places you'll draw on. It covers:
   about 1.4 × 1.3 km);
 - water: the sea or lakes, rivers and which way they probably flow (water intake upstream, sewage downstream), shore;
 - the connections off the map, highways and railways, where a highway ends and becomes a street (the map's own start),
-  and any street that already joins a highway at grade;
+  and any street that already joins a highway at grade. The snapshot holds road and rail links only: when the city's
+  founding.md names the map, the survey adds the map file's **ship and air links** too, without their places (find
+  them in game before planning a harbour or an airport);
 - resources across the map (fertile land, forest, oil, ore, fish, groundwater): where each one mostly is;
 - landmarks, and land value and pollution once the city has some.
+
+**When every tile is open** (the game's unlock-all option), the survey's "start" is a stand-in: the tiles around the
+map's starter road, or around the middle. Where the city really starts is the Mayor's call: founding.md's `start_hint`
+if there is one (the survey shows it), else ask, with a proposal. On a custom map, read `founding.py map "<map>"`
+first: its author's description often names the intended starts ("a flatter coastal start, or a forested one").
 
 **What the snapshot can't tell you:**
 - the traffic side (founding.md, or ask);

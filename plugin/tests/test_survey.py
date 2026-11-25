@@ -84,6 +84,39 @@ class Survey(unittest.TestCase):
         self.assertEqual(s["tiles"]["buyable"], [])
         self.assertIn("unlock all map tiles", s["start"]["note"])
 
+    def test_founding_names_the_map_and_its_links_the_snapshot_cannot_show(self):
+        import founding
+        base = Path(tempfile.mkdtemp(prefix="cm-survey-founding-"))
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        (base / "journal").mkdir()
+        (base / "journal/journal.toml").write_text('id = "riverton"\ncity = "Riverton"\n', encoding="utf-8")
+        (base / "manager").mkdir()
+        (base / "manager/founding.md").write_text('+++\nmap = "Test Bay"\nstart_hint = "By the river mouth"\n+++\n', encoding="utf-8")
+        maps = [({"displayName": "Test Bay", "connections": {"road": True, "train": False, "ship": True, "air": True}}, "game", None, None)]
+        real = founding.all_maps
+        founding.all_maps = lambda: maps
+        self.addCleanup(setattr, founding, "all_maps", real)
+        facts = survey.founding_facts(base / "journal")
+        self.assertEqual(facts, {"startHint": "By the river mouth", "map": "Test Bay", "mapConnections": ["road", "ship", "air"]})
+        s = dict(self.s, founding=facts)
+        text = survey.report(s)
+        self.assertIn("**From the map's own file** (Test Bay): also a **ship** link and an **air** link", text)
+        self.assertIn("**Where the Mayor wants to start** (founding.md): By the river mouth", text)
+        self.assertEqual(survey.founding_facts(self.snap_path if hasattr(self, "snap_path") else base / "nothing.json"), {})
+        self.assertEqual(survey.founding_facts(base / "nowhere"), {}, "no founding.md: nothing, and no error")
+
+    def test_every_tile_owned_on_an_irregular_map_says_how_many_tiles(self):
+        everything = {(r, c) for r in range(5) for c in range(5)}
+        snap = mm.snapshot(owned=everything)
+        gone = {tile_index(r, c) for r, c in ((1, 1), (1, 3), (3, 1), (3, 3))}   # an odd layout: the middle has no corners
+        snap["mapTiles"]["tiles"] = [t for i, t in enumerate(snap["mapTiles"]["tiles"]) if i not in gone]
+        s = survey.survey(snap)
+        n = len(s["start"]["tiles"])
+        self.assertNotEqual(n, 9)
+        self.assertIn(f"the {n} tile", s["start"]["note"])
+        self.assertIn("aren't a regular grid", s["start"]["note"])
+        self.assertIn("the Mayor's choice", s["start"]["note"])
+
     def test_report_has_words_not_coordinates(self):
         text = survey.report(self.s)
         for heading in ("## Settings that change the plan", "## The start", "## Connections off the map",

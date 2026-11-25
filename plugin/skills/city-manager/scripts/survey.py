@@ -362,10 +362,13 @@ def survey(snap, start=False):
         start_box = bounds([t["box"] for t in start_tiles]) if start_tiles else [*terrain.extent, *terrain.extent]
         if not start_tiles:
             start_tiles = [{"i": -1, "box": start_box, "resources": {}}]
-        start_note = ("Every tile is already owned (the game's option to unlock all map tiles), so the start is taken as "
-                      "the 3 × 3 tiles around the map's own starter road." if all_owned and roads else
-                      "Every tile is already owned (the game's option to unlock all map tiles), so the start is taken as "
-                      "the 3 × 3 tiles in the middle of the map." if all_owned else
+        n = len(start_tiles)
+        which = "the 3 × 3 tiles" if n == 9 else f"the {n} tile{'s' if n != 1 else ''}"
+        grid = "" if n == 9 else " (this map's tiles aren't a regular grid)"
+        start_note = (f"Every tile is already owned (the game's option to unlock all map tiles), so the start is taken as "
+                      f"{which} around {'the map' + chr(39) + 's own starter road' if roads else 'the middle of the map'}{grid}. "
+                      "That's only a stand-in: where the city starts is the Mayor's choice (founding.md's start_hint, or "
+                      "ask; a custom map's own description often names its intended starts)." if all_owned else
                       "The snapshot lists no owned tiles; the start is taken as the middle of the map.")
     else:
         start_tiles = owned
@@ -675,6 +678,36 @@ def ground_words(g):
     return "; ".join(parts) if parts else "unknown"
 
 
+def founding_facts(src):
+    """What the founding chat recorded beside the journal source (manager/founding.md), and the map's own file's
+    connections, which the snapshot can't show (it holds road and rail links only): {"map", "startHint",
+    "mapConnections"}, or {} when there's no founding.md (a snapshot file, a journal folder in ModsData)."""
+    p = Path(src).expanduser()
+    if p.is_file():
+        return {}
+    try:
+        import founding   # noqa: PLC0415  the founding chat's helper, beside this script
+        _, meta, _ = founding.read_founding(p)
+    except Exception:     # a missing or broken founding.md never stops a survey
+        return {}
+    if not isinstance(meta, dict):
+        return {}
+    out = {}
+    if isinstance(meta.get("start_hint"), str) and meta["start_hint"].strip():
+        out["startHint"] = meta["start_hint"].strip()[:300]
+    name = meta.get("map")
+    if isinstance(name, str) and name.strip():
+        out["map"] = name.strip()[:120]
+        try:
+            hit = next((m for m in founding.all_maps() if str(m[0].get("displayName", "")).casefold() == name.strip().casefold()), None)
+        except Exception:
+            hit = None
+        if hit:
+            con = hit[0].get("connections") or {}
+            out["mapConnections"] = [k for k in founding.CONNECTIONS if isinstance(con, dict) and con.get(k)]
+    return out
+
+
 def report(s, pictures=()):
     out = []
     w = out.append
@@ -708,17 +741,29 @@ def report(s, pictures=()):
     w(f"- **Already built:** {', '.join(nets) if nets else 'nothing yet'}.")
     if st["streets"]:
         w("- **Streets in and around it:** " + "; ".join(f"{x['name']} ({x['piece']}, {x['km']} km)" for x in st["streets"]) + ".")
+    fd = s.get("founding") or {}
+    if fd.get("startHint"):
+        w(f"- **Where the Mayor wants to start** (founding.md): {fd['startHint']}")
     res = [f"{RESOURCE_WORDS[k]} {v:.0f}% of the map's" for k, v in st["resources"].items() if v >= 0.5]
     if res:
         w("- **Resources under it:** " + "; ".join(res) + ". Say so if a district would sit on top of oil or ore.")
     w("")
 
-    if s["connections"]:
+    kinds_seen = {o["kind"] for o in s["connections"]}
+    from_file = [k for k in (fd.get("mapConnections") or []) if k in ("ship", "air") or (k == "train" and "train" not in kinds_seen)]
+    if s["connections"] or from_file:
         w("## Connections off the map\n")
+    if s["connections"]:
         w(f"| What | Where it leaves the map | How many | From {st['word']} | Pieces |\n|---|---|---|---|---|")
         for o in s["connections"]:
             what = {"highway": "Highway", "train": "Railway", "road": "Road"}.get(o["kind"], o["kind"].capitalize())
             w(f"| {what} | {o['edge']} | {len(o['places'])} | {o['fromStart']} | {', '.join(o['types'])} |")
+    if from_file:
+        words = {"ship": "a **ship** link", "air": "an **air** link", "train": "a **railway** link"}
+        w(("\n" if s["connections"] else "") + f"- **From the map's own file** ({fd['map']}): also "
+          + " and ".join(words[k] for k in from_file) + ". The snapshot holds road and rail links only, so where they "
+          "leave the map isn't known here: find them in game before placing a harbour or an airport.")
+    if s["connections"] or from_file:
         w("")
 
     hw = s["highways"]
@@ -1191,6 +1236,7 @@ def main(argv):
         print(f"{path.name} has no terrain part, so there's nothing to survey (City Manager 0.6 or later writes it).")
         return 1
     s["snapshot"] = str(path)
+    s["founding"] = founding_facts(src)
     out.mkdir(parents=True, exist_ok=True)
     pictures = [out / "survey-map.png", out / "survey-start.png"]
     draw_survey(snap, s, *pictures, width=width)
