@@ -78,9 +78,11 @@ let bodyW = BODY_W;
 const MAX_NOTE = 2000, MAX_ANSWER = 4000; // what the mod saves (JournalStore.MaxNote, MaxAnswer)
 
 const STATUS = {
-    active: { label: "In progress", color: "rgba(80, 160, 255, 0.9)" },
-    next: { label: "Up next", color: "rgba(240, 180, 60, 0.9)" },
-    idea: { label: "Idea", color: "rgba(170, 140, 255, 0.85)" },
+    // The planner's words (City Planning Draft's plan rows are "Now · …", "Next · …", "Later · …"), so a project and its
+    // plan row say the same thing; the stored values stay active, next, idea, hold and done.
+    active: { label: "Now", color: "rgba(80, 160, 255, 0.9)" },
+    next: { label: "Next", color: "rgba(240, 180, 60, 0.9)" },
+    idea: { label: "Later", color: "rgba(170, 140, 255, 0.85)" },
     hold: { label: "On hold", color: "rgba(150, 150, 160, 0.85)" },
     done: { label: "Done", color: "rgba(70, 180, 100, 0.9)" },
 };
@@ -682,6 +684,15 @@ function ProjectDetail(props) {
     const firstDraft = plans.find((pl) => pl.kind === "draft" && arr(pl.layers).length);
     const stepLayer = firstDraft ? str(arr(firstDraft.layers)[0]) : "";
     const show = (key, layer, guide, place) => setSaid({ key, text: showInPlanner(plannerState, layer, guide, place) });
+    // Next step: the first step not yet ticked that has a place; its plan in the planner, and the camera on it
+    const placed = (s) => { const w = obj(s.where); return w && Number.isFinite(Number(w.x)) && Number.isFinite(Number(w.z)) ? w : null; };
+    const nextStep = steps.find((s) => placed(s) && !stepDone(mayor, stepKey(p.id, s.id), s));
+    const goNext = () => {   // the camera goes there whatever the planner says
+        const key = stepKey(p.id, nextStep.id), w = placed(nextStep);
+        trigger("flyTo", Number(w.x), Number(w.z), Number(w.zoom) || 0);
+        const planner = stepLayer ? showInPlanner(plannerState, stepLayer, str(firstDraft.name), null) : "";
+        setSaid({ key, text: (planner ? planner + " " : "") + "The camera is on " + str(nextStep.text) + "." });
+    };
     return h("div", null,
         back,
         h("div", { style: C.row },
@@ -710,6 +721,8 @@ function ProjectDetail(props) {
             pl.note ? h("div", { style: C.small }, take(b, pl.note)) : null,
             pl.kind === "doc" && pl.url ? h("div", { style: C.small }, "On your phone: " + take(b, pl.url).replace(/^https?:\/\//, "")) : null)),
         steps.length ? section("sp", "Steps") : null,
+        nextStep ? h("div", { style: { ...C.row, marginTop: "4rem", marginBottom: "4rem" } },
+            h("div", { style: C.button, onClick: goNext }, "Next step: " + take(b, str(nextStep.text), 48))) : null,
         steps.map((s) => {
             const key = stepKey(p.id, s.id);
             const isDone = stepDone(mayor, key, s);

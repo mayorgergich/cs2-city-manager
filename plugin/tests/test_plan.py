@@ -46,6 +46,24 @@ class Checks(unittest.TestCase):
         chk.run()
         return chk
 
+    def test_tonight_over_land_the_long_term_plan_keeps(self):
+        base = {"name": "Base · Districts", "roads": [], "junctions": [], "areas": [
+            {"name": "Waterfront", "type": "Residential", "polygon": [[-170, -170], [0, -170], [0, 0], [-170, 0]]},
+            {"name": "Airport site", "type": "Custom", "polygon": [[50, -170], [170, -170], [170, 0], [50, 0]]}]}
+        now = {"name": "Now · First streets", "junctions": [],
+               "roads": [road("1 Cut", "Local", [[20, -100], [160, -100]], piece="Two-Lane Road"),
+                         road("2 Lane", "Local", [[-100, 100], [-100, 50]], piece="Two-Lane Road")],
+               "areas": [{"name": "3 Works", "type": "Industrial", "polygon": [[-160, -160], [-60, -160], [-60, -60], [-160, -60]]},
+                         {"name": "4 Homes", "type": "Residential", "polygon": [[-150, -40], [-20, -40], [-20, -10], [-150, -10]]}]}
+        chk = self.check(now, base)
+        warns = {p["item"]: p["text"] for p in problems(chk.results, "warn")}
+        self.assertIn("on Waterfront, which the long-term plan keeps for residential zoning", warns.get("3 Works", ""))
+        self.assertIn("runs about", warns.get("1 Cut", ""))
+        self.assertIn("through Airport site", warns.get("1 Cut", ""))
+        self.assertNotIn("4 Homes", warns, "homes on land kept for homes are fine")
+        self.assertNotIn("2 Lane", warns)
+        self.assertEqual(chk.errors(), 0, "warnings only: the Mayor may have changed the plan on purpose")
+
     def test_a_clean_first_phase(self):
         chk = self.check({"name": "Now · First streets",
                           "roads": [road("1 Main Avenue", "Arterial", [[-150, -100], [150, -100]], piece="Four-Lane Road"),
@@ -454,10 +472,11 @@ class Grid(unittest.TestCase):
                                "--name", "West homes", "--plan", "Now · West homes", "--zone", "Residential")
         self.assertEqual(code, 0, text)
         r = self.roads("Now · West homes")
-        self.assertEqual([r[f"7 West homes, {o} street"]["points"] for o in ("first", "second", "third")],
+        self.assertEqual([r[f"7 West homes, street {k}"]["points"] for k in (1, 2, 3)],
                          [[[116, 150], [116, -150]], [[228, 150], [228, -150]], [[340, 150], [340, -150]]],
                          "116 m off a Four-Lane Road (12 + 96 + 8), then 112 m apart; facing south, left is east")
-        self.assertEqual(r["7 West homes, north end street"]["points"], [[0, 150], [340, 150]])
+        self.assertEqual(r["7 West homes, north end"]["points"], [[0, 150], [340, 150]])
+        self.assertTrue(all(len(n) <= plan.ITEM_NAME_MAX for n in r), "short enough for City Planning Draft's panel")
         self.assertTrue(all(x["piece"] == "Two-Lane Road" and x["class"] == "Local" for x in r.values()))
         area = json.loads(self.plan_path.read_text(encoding="utf-8"))["plans"][0]["areas"][0]
         self.assertEqual((area["name"], area["type"]), ("7 West homes", "Residential"))
@@ -469,14 +488,14 @@ class Grid(unittest.TestCase):
         first = self.roads("Now · East")
         self.grid(*args)
         self.assertEqual(self.roads("Now · East"), first)
-        self.assertIn("3 East, cross street 1", first)
-        self.assertNotIn("3 East, north end street", first)
+        self.assertIn("3 East, cross 1", first)
+        self.assertNotIn("3 East, north end", first)
 
     def test_a_planned_line_and_bad_options(self):
         code, text = self.grid("--origin", "-300,-400", "--dir", "1,0", "--length", "200", "--spine-piece", "Two-Lane Road",
                                "--side", "left", "--rows", "1", "--plan", "Later · Somewhere")
         self.assertEqual(code, 0, text)
-        self.assertEqual(self.roads("Later · Somewhere")["New streets, first street"]["points"], [[-300, -288], [-100, -288]],
+        self.assertEqual(self.roads("Later · Somewhere")["Grid, street 1"]["points"], [[-300, -288], [-100, -288]],
                          "112 m off a Two-Lane Road")
         for bad in (["--along", "Main Street", "--side", "up", "--rows", "2"], ["--along", "Nowhere Road", "--side", "left", "--rows", "2"],
                     ["--side", "left", "--rows", "2"], ["--along", "Main Street", "--side", "left", "--rows", "40"]):

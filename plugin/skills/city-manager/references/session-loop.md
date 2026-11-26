@@ -23,8 +23,10 @@ to every note and wrap-up answer, what you see, from What needs attention, at mo
 planned" names. (4) `plan.py advance plan.json <city>/journal` (built Now plans to Done, last round's Done out, finished
 projects closed; Next to Now only with `--promote`, on the Mayor's word), `jp archive`, the next briefing from the plan
 you have, `jp build`, `jp ack`, `city.py keep`.
-(5) Send the debrief. (6) Only then, and only on a yes: the next streets (`plan.py grid`, then `plan.py ship`: the
-guide, the build cards and the journal in one run).
+(5) Update the long-term goals alongside: the City plan project's steps (what tonight moved forward, what changed) and,
+when the city changed shape, its picture. (6) Send the debrief. (7) Only then, and only on a yes: next session's
+plan, for that session only (`plan.py grid`/`road`/…, then `plan.py ship`: the guide, the build cards and the journal
+in one run).
 
 ## Briefing (before the Mayor plays)
 
@@ -40,7 +42,12 @@ guide, the build cards and the journal in one run).
    - **A city with a charter but no plan yet** (`manager/charter.md` or `founding.md`, nothing in the dossier's plan;
      the intake stopped before its plan): the first plan comes first, from the start snapshot (`founding.md`, §§ 5-6).
    - If no report followed the last session (the Mayor played since the last report: the journal shows activity after it, or the facts tool sees a newer save), write that report first: a briefing built on stale facts sends the Mayor after the wrong things.
-2. **Choose the list: 3 to 7 tasks, sized to the time.**
+2. **Choose tonight's focus, and draw only that.** Ask in one line when it isn't clear: carry on with the project
+   last session worked on, or start the next goal from the City plan project. Then tonight's plan is small: the
+   `Now · <project>` row for that one project (two at most), drawn with the builders (`plan.py road`, `grid`,
+   `interchange`…), checked (`plan.py check` also warns when it builds over land the long-term plan keeps), and
+   shipped. Nothing long-term goes into the planner; a goal that changes goes into the City plan project instead.
+3. **Choose the list: 3 to 7 tasks, sized to the time.**
    - **Order:** things to do before launching (a launcher change, which save to load) first, then the quick or free win, then the next concrete step of the top-priority project, then decisions (two at most).
    - **The time the Mayor has** ("an hour", "keep it short"): pick what fits, give rough minutes per task and mark them as rough. Zero decisions is fine. Put the rest under a "Not tonight" heading in the body, so it's visibly kept, not dropped.
    - Each task belongs to a project (`project = "<id>"`) unless it's general.
@@ -49,7 +56,7 @@ guide, the build cards and the journal in one run).
    - **Building recommendations:** say what a build would knock down when you can check it; otherwise say it's unchecked. Suggest a manual save before a big build.
    - **Build cards:** every task that builds something names the exact pieces and carries a close-up picture, with the same number and words as its plan item (`guides.md`). Re-read street names from the newest snapshot first (`city.py streets`, `city.py street <name>`): the game renames streets when roads are rebuilt. Take the pieces' names from `city.py catalogue`: the game's own menu names, only what the Mayor has unlocked, and what the next milestone brings.
    - **The guide:** point at the newest guide, `<City> <N>`; the task reads "In the planner, Import latest file (<City> <N>)". The planner's Import takes the newest file in its Exports folder, **whichever city it's for**, so with more than one city run `cityplan.py front "<City> <N>"` before the Mayor plays: it makes tonight's city's guide the newest. Keep its plans' statuses in step with the briefing: what tonight's tasks build is **Now**. If that changes, export the guide again (`references/guides.md`). `journal.py build` warns about any page or task that names an older or moved guide, or a plan the guide doesn't have; fix every warning.
-3. **Archive and write.**
+4. **Archive and write.**
    - **Revise the current briefing in place, without archiving it, when it hasn't been played:** the Mayor has ticked nothing on it and hasn't played since. That's the usual case, because the report writes the next briefing. Keep its task ids so nothing the Mayor ticks gets lost.
    - **After a session:** run `jp archive <city>/journal` (it moves `briefing.md` to `briefings/<id>.md`), then write the new `briefing.md` with the format in `journal-format.md`.
    - **Ids:** use the date the Mayor will play (`2026-11-24`). A second session on the same date gets `2026-11-24-2`. Archive refuses a duplicate, because the Mayor's ticks are stored by briefing id.

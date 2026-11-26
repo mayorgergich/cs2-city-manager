@@ -123,6 +123,12 @@ for a fact none of these give, and say so in your notes for the main tools to gr
 
 ## 3. The whole-map plan
 
+**It's the City Manager's, not the planner's.** Keep it in the plan file as `Base` plans (areas and long lines) and
+show it to the Mayor as one picture on the City plan project's page, with each goal as a step in words ("Dense
+waterfront", "Airport inland"). It never goes into the planner (`ship` leaves Base and Later out), so it can't go stale
+there; update the picture and the goals in each report as the city changes. `plan.py check` uses it to warn when a
+session's plan builds over land it keeps.
+
 Draw it as areas and long lines, no local streets. Place each broad district by these rules, and say why in one line:
 
 - **Keep the start compact.** One downtown and at most one more district on the start tiles, plus parks and utility
@@ -160,6 +166,11 @@ When two goals conflict (the freight side is also the side the Mayor wants for h
 one way, and let the Mayor choose.
 
 ## 4. The first phase
+
+**The first session's plan is the opening area only:** the highway entry, the first arterials and the first district's
+streets, plus **one or two direction roads** that start toward the Mayor's main goal (an arterial heading for the
+water when they want a dense waterfront). That's what goes into the planner as `Now · …`; everything else waits for
+the session that builds it. Later sessions each draw their own small plan (session-loop.md § Briefing).
 
 - **Size it by `pace` and money:** `relaxed` builds one small neighbourhood off the highway's entry; `steady` a
   downtown core with its arterials; `fast` the core plus the first jobs district. Every kilometre built early is upkeep
@@ -280,7 +291,10 @@ own (`plan.py` still checks and draws it; the plan file just never goes to the p
 a few lines in the chat on what to build first instead of step 4.
 
 1. **The guide.** `plan.py ship plan.json <city>/journal` (`guides.md` § Making one) does steps 1 to 3 in one run:
-   the guide as `Riverton 1`, one project per Now or Next plan with its build cards, and the journal built. The map id
+   the guide as `Riverton 1` with the opening area's Now plan (and a Next plan, if the Mayor wants a preview), one
+   project per Now or Next plan with its build cards, and the journal built. The whole-map plan stays out of the
+   planner: draw it (`plan.py draw plan.json <src> --only "Base · …" --view map --out <city>/journal/images/city-plan.png`)
+   for the City plan project's page. The map id
    comes from the planner's document for the city; before the planner has ever been opened there, pass the city's name
    (`--map-id "Riverton"`). Write the steps' words first (below), in the plan's `cards` or the projects.
 2. **Projects**, with the same words as the plans: one per Now or Next plan ("First streets"), and one for the

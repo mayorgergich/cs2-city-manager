@@ -18,8 +18,26 @@ guide; the Mayor builds. Nothing in a guide changes the city.
   - **Base**: the long-term picture (roads, zoning, services, transit);
   - **Done**: kept for one round so the Mayor can compare, then dropped.
 
-  The topic uses the same words as the journal's project and the briefing's task ("Port Gate", "Road fixes").
-- **Items inside a Now or Next plan:** plain step numbers in build order, `1 South circle`, `2 Ramp down`.
+  **The planner is for the session; the long term is the journal's.** `plan.py ship` puts only Now, Next and Done
+  into the guide: what tonight builds, what comes after, and what was just built. Later and Base stay in the City
+  Manager's plan file, where `plan.py check` warns when tonight's plan builds over land they keep for something else
+  and `plan.py draw` makes the long-term picture for the City plan project's page. A long-term layout drawn once in
+  the planner goes stale the first time the Mayor builds differently, and that is what confused them (25 Nov: 315
+  zoning items, names up to 175 characters, from a plan four sessions old). Only on the Mayor's request:
+  `--with-later`.
+
+  The topic **is** the journal project's title, word for word ("Road fixes" ↔ `Now · Road fixes`), and the journal's
+  statuses use the same words (the panel shows Now, Next, Later, On hold, Done). **One project, one plan row:** a
+  project with work in two places has two steps, not two rows (`plan.py ship` points out titles that differ and
+  projects with more than one live row). `ship` exports the rows in the journal's order: Now, Next, Later, Base, Done,
+  then by the projects' priority.
+- **Items inside a Now or Next plan:** the step number and two to four words, **at most 24 characters**
+  (`1 South circle`, `2 Ramp down`, `9 Off-ramp, E-bound`): City Planning Draft's side panel can't be resized and
+  cuts longer names with "…", and its *Construct with Draft* view shows no names at all. `plan.py check` stops on a
+  longer one. The how-to (the piece, the depth, the junction) goes into the journal step, whose text starts with the
+  same number and words; give a step's words for a group of items in the plan's `"cards"`. While building, the Mayor
+  reads the journal beside the planner: *Next step* and *In planner* (mod 0.9.3+) switch the planner to the plan and
+  take the camera to the step.
 - **No codes** anywhere the Mayor reads (no "A12", "D2", "R"), and no coordinates.
 
 ## Build cards: every Now and Next item says exactly what to build
@@ -39,7 +57,7 @@ or junction to use. For every item in a Now or Next plan, the journal step gives
   them, so for an older mod put the picture on its own line in the project page as well);
 - **the same number and words as the plan items**: plan item `2 Cedar: ramp down` and journal step
   "2 Cedar: ramp down (Highway Oneway - 1 lane, about 20 m down)". The Mayor matches them on screen. One job of several
-  pieces is one step: `7 West, first street` to `7 West end street` and the area `7 Riverside homes` are all step 7,
+  pieces is one step: `7 West, street 1` to `7 West, north end` and the area `7 Riverside homes` are all step 7,
   one card. Two journal steps for one number (west and east) need `7a` and `7b` in the plan and the journal, or
   ship leaves them as they are.
 

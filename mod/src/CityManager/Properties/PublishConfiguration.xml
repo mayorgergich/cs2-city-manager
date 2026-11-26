@@ -51,10 +51,14 @@ Discord: https://discord.gg/Rtea83Gnb9
 	<Screenshot Value="Properties/Screenshots/3-project.png" />
 	<Screenshot Value="Properties/Screenshots/4-notes.png" />
 	<Tag Value="Code Mod" />
-	<ModVersion Value="0.9.3" />
+	<ModVersion Value="0.9.4" />
 	<GameVersion Value="1.6.*" />
 	<Dependency Id="155935" DisplayName="City Planning Draft" />
 	<ChangeLog>
+0.9.4
+- The journal and City Planning Draft speak the same words: project statuses now read Now, Next, Later, On hold and Done, like the planner's plan rows.
+- Next step: on a project page, one button takes the camera to the first step you haven't ticked and shows its plan in City Planning Draft, so you can build from the draft with the journal open beside it.
+
 0.9.3
 - In planner: a build card's new button shows its plan over your city in City Planning Draft (Construct with Draft, so you build with the game's own tools while it stays drawn) and takes the camera to the spot. Each of a project's planner layers gets a Show button. If the guide isn't imported yet, it tells you to press Import latest file.
 

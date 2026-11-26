@@ -94,6 +94,8 @@ usage:
       number, written by hand or by an earlier ship, keeps its id, its words and its tick; a new one takes its words
       from the plan's "cards" (below), else from the item and its pieces. Then it points every project's link to the
       new guide and builds the journal. --dry-run says what it would do and writes nothing.
+      The guide carries the session's rows only: Now, Next and Done. Later and Base stay in the plan file (the long-term
+      picture, which the check uses to warn when tonight builds over land they keep); --with-later puts them in too.
       First it reads the planner's own document: Import replaces it whole, so if the Mayor drew, moved, renamed or
       deleted anything since the guide it holds, ship stops and lists it (with `plan.py check` on their drawings).
       Ship again with --keep-mayor (their changes go into the plan file, backed up first) or --drop-mayor (the new
@@ -152,6 +154,9 @@ SEPARATED = {"Underpass", "Overpass", "Interchange", "CrossingNoConnection"}
 CLASS_STYLE = {"Highway": ((220, 40, 40), 7), "Arterial": ((245, 140, 20), 6), "Collector": ((240, 200, 30), 5),
                "Local": ((255, 255, 255), 3)}
 STATUS_ORDER = {"Base": 0, "Done": 1, "Later": 2, "Next": 3, "Now": 4, None: 3}
+ITEM_NAME_MAX = 24          # City Planning Draft's side panel cuts names with "…" (its rows fit about 26 characters)
+COMPASS_SHORT = {"north": "N", "north-east": "NE", "east": "E", "south-east": "SE", "south": "S", "south-west": "SW",
+                 "west": "W", "north-west": "NW"}
 
 
 def status_of(name):
@@ -359,11 +364,71 @@ class Check:
             self.internal(p, roads, add)
             if soon(status):
                 self.spacing(p, roads, add)
+            for kind in ("roads", "areas", "junctions"):
+                for it in arr(p.get(kind)):
+                    nm = str(it.get("name") or "") if isinstance(it, dict) else ""
+                    if nm and not it.get("existing") and len(nm) > ITEM_NAME_MAX:
+                        add("error" if soon(status) else "warn", nm,
+                            f"its name is {len(nm)} characters: City Planning Draft's panel cuts names after about "
+                            f"{ITEM_NAME_MAX}, so the Mayor can't read it there. Keep \"<number> <two to four words>\" "
+                            "and put the rest in the journal step (or the plan's \"cards\")")
+        self.longterm()
         names = [p.get("name") or "" for p in self.plans]
         problems = cityplan.naming_problems(self.name, names) if self.name else \
             [w for w in cityplan.naming_problems("X 1", names) if not w.startswith("file ")]
         self.naming = problems
         return self.results
+
+    def longterm(self):
+        """Now and Next items on land the long-term plan (Later and Base areas) keeps for something else: a zone of
+        another kind, or anything on a Custom area (a reserved site: the airport, the university) or one marked
+        "keep": true. Warnings: the Mayor may have changed the plan on purpose."""
+        keeps = []
+        for p in self.plans:
+            if status_of(p.get("name")) in ("Later", "Base"):
+                for a in arr(p.get("areas")):
+                    q = item_points(a) if isinstance(a, dict) else []
+                    if len(q) >= 3:
+                        keeps.append((a, q, sv.bounds([[x, x, z, z] for x, z in q])))
+        if not keeps:
+            return
+        for res, p in zip(self.results, self.plans):
+            if not soon(res["status"]):
+                continue
+
+            def warn(item, text):
+                res["problems"].append({"level": "warn", "item": item, "text": text, "at": None})
+            for a in arr(p.get("areas")):
+                q = item_points(a) if isinstance(a, dict) and not a.get("existing") else []
+                if len(q) < 3:
+                    continue
+                b = sv.bounds([[x, x, z, z] for x, z in q])
+                step = max(8.0, max(b[1] - b[0], b[3] - b[2]) / 30)
+                pts = [(b[0] + i * step, b[2] + k * step) for i in range(int((b[1] - b[0]) / step) + 1)
+                       for k in range(int((b[3] - b[2]) / step) + 1)]
+                pts = [xz for xz in pts if inside(q, *xz)] or [centre_of("areas", q)]
+                for la, lq, lb in keeps:
+                    if lb[1] < b[0] or lb[0] > b[1] or lb[3] < b[2] or lb[2] > b[3]:
+                        continue
+                    share = sum(1 for xz in pts if inside(lq, *xz)) / len(pts)
+                    mine, theirs = a.get("type", "Custom"), la.get("type", "Custom")
+                    reserved = theirs == "Custom" or la.get("keep")
+                    if share >= 0.2 and ((reserved and mine != "Custom") or (theirs != "Custom" and mine != theirs and mine in ZONE_KINDS)):
+                        warn(a.get("name"), f"about {share:.0%} of it is on {la.get('name') or 'land'}, which the long-term plan keeps for "
+                             + (f"{theirs.lower()} zoning" if theirs != "Custom" else "its own use") + ": fine if the plan changed, "
+                             "else move it (and say so in the report)")
+            for r in arr(p.get("roads")):
+                q = item_points(r) if isinstance(r, dict) and not r.get("existing") else []
+                if len(q) < 2:
+                    continue
+                samples = sample(q, 10.0)
+                for la, lq, lb in keeps:
+                    if not (la.get("type", "Custom") == "Custom" or la.get("keep")):
+                        continue
+                    metres = 10.0 * sum(1 for x, z, _ in samples if inside(lq, x, z))
+                    if metres >= 30:
+                        warn(r.get("name"), f"runs about {metres:,.0f} m through {la.get('name') or 'land'}, which the long-term "
+                             "plan keeps for its own use: fine if the plan changed, else route it round")
 
     def road(self, plan, status, r, add):
         name = r.get("name") or "(no name)"
@@ -1377,7 +1442,7 @@ def spine_of(snap, street, near=None):
 
 
 def make_grid(origin, u, length, spine_w, side, rows, start=0.0, along=None, piece="Two-Lane Road", ends="both",
-              block=None, number=None, name="New streets", zone=None):
+              block=None, number=None, name="Grid", zone=None):
     """The streets of a grid beside a straight spine. Returns (roads, area or None)."""
     n = (-u[1], u[0]) if side == "left" else (u[1], -u[0])
     w = width_of(piece)
@@ -1387,17 +1452,17 @@ def make_grid(origin, u, length, spine_w, side, rows, start=0.0, along=None, pie
     tag = (f"{number} " if number is not None else "") + name
     item = lambda label, pts: {"name": f"{tag}, {label}" if label[0].islower() else f"{tag} {label}", "class": "Local",
                                "piece": piece, "points": pts}
-    roads = [item(f"{ORDINALS[i] if i < len(ORDINALS) else str(i + 1) + 'th'} street", [at(s0, t), at(s1, t)])
+    roads = [item(f"street {i + 1}", [at(s0, t), at(s1, t)])
              for i, t in enumerate(offsets)]
     word = lambda s_: sv.direction(*((u[0], u[1]) if s_ > (s0 + s1) / 2 else (-u[0], -u[1])))
     if ends in ("both", "start"):
-        roads.append(item(f"{word(s0)} end street", [at(s0, 0), at(s0, offsets[-1])]))
+        roads.append(item(f"{word(s0)} end", [at(s0, 0), at(s0, offsets[-1])]))
     if ends in ("both", "end"):
-        roads.append(item(f"{word(s1)} end street", [at(s1, 0), at(s1, offsets[-1])]))
+        roads.append(item(f"{word(s1)} end", [at(s1, 0), at(s1, offsets[-1])]))
     if block:
         k, s_ = 1, s0 + block
         while s_ < s1 - block / 2:
-            roads.append(item(f"cross street {k}", [at(s_, 0), at(s_, offsets[-1])]))
+            roads.append(item(f"cross {k}", [at(s_, 0), at(s_, offsets[-1])]))
             k, s_ = k + 1, s_ + block
     area = None
     if zone:
@@ -1412,7 +1477,7 @@ def add_to_plan(path, plan_name, roads, area=None):
     return add_items(path, plan_name, roads=roads, areas=[area] if area else [])
 
 
-def add_items(path, plan_name, roads=(), areas=(), junctions=()):
+def add_items(path, plan_name, roads=(), areas=(), junctions=(), cards=None):
     """Puts roads, areas and junctions into a plan of the file (made if missing, on top), replacing items of the same
     name; atomic."""
     p = Path(path)
@@ -1426,6 +1491,8 @@ def add_items(path, plan_name, roads=(), areas=(), junctions=()):
     for kind, items in (("roads", list(roads)), ("areas", list(areas)), ("junctions", list(junctions))):
         names = {it["name"] for it in items}
         target[kind] = [x for x in arr(target.get(kind)) if not (isinstance(x, dict) and x.get("name") in names)] + items
+    if cards:
+        target["cards"] = dict(obj(target.get("cards")) or {}, **cards)
     tmp = p.with_name(p.name + ".tmp")
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, p)
@@ -1718,10 +1785,10 @@ def under_items(line, s_c, half, ramp, depth, piece, cls, tag, under_name=None):
     if grade > 0.17:
         notes.append("steep: build the ramp first and read its slope in game")
     under = f" under {under_name}" if under_name else ""
-    mk = lambda role, s0, s1, extra: dict({"name": f"{tag}, {role}", "class": cls, "piece": piece,
+    mk = lambda role, s0, s1, extra: dict({"name": f"{tag} {role}", "class": cls, "piece": piece,
                                            "points": [[round(x, 1), round(z, 1)] for x, z in line.line(s0, s1, step=30.0)]}, **extra)
-    roads = [mk("down-ramp", a, b, {"depth": [0, end]}), mk("tunnel" + under, b, c, {"tunnel": True, "depth": depth}),
-             mk("up-ramp", c, d, {"depth": [end, 0]})]
+    roads = [mk("Down-ramp", a, b, {"depth": [0, end]}), mk("Tunnel", b, c, {"tunnel": True, "depth": depth}),
+             mk("Up-ramp", c, d, {"depth": [end, 0]})]
     return roads, roads[1]["name"], notes
 
 
@@ -1763,8 +1830,8 @@ def main_tunnel(plan_path, snap, rest, opt):
     half = (line.length - 2 * ramp) / 2
     if half < 10:
         raise SystemExit(f"{line.length:,.0f} m is too short for a tunnel with {ramp:,.0f} m ramps.")
-    roads, tunnel, notes = under_items(line, line.length / 2, half, ramp, depth, opt("--piece", "Four-Lane Road"), opt("--class", "Arterial"), f"{number} {name}")
-    add_items(plan_path, plan_name, roads=roads)
+    roads, tunnel, notes = under_items(line, line.length / 2, half, ramp, depth, opt("--piece", "Four-Lane Road"), opt("--class", "Arterial"), number)
+    add_items(plan_path, plan_name, roads=roads, cards={number: {"text": f"{number} {name}"}})
     print(f"Added to {plan_name!r}: {name} as step {number}: down-ramp, a {2 * half:,.0f} m tunnel about {depth:g} m down, up-ramp "
           f"({'; '.join(notes)}).\nCheck it: plan.py check {Path(plan_path).name} <src>.")
     return 0
@@ -1801,14 +1868,14 @@ def main_underpass(plan_path, snap, rest, opt):
     pre = []
     piece = under_piece(edges, opt("--piece"), "Two-Lane Road", pre)
     roads, tunnel, notes = under_items(line, hit[0], half, ramp, float(opt("--depth", 13)), piece,
-                                       road_class_of(edges) if edges else opt("--class", "Collector"), f"{number} {name}", under)
+                                       road_class_of(edges) if edges else opt("--class", "Collector"), number, under)
     notes = pre + notes
     juncs = []
     if ex:
         roads.append(ex)
-        juncs.append({"name": f"{number} {name}, under {under}", "type": "Underpass", "position": [round(hit[2], 1), round(hit[3], 1)],
+        juncs.append({"name": f"{number} Underpass", "type": "Underpass", "position": [round(hit[2], 1), round(hit[3], 1)],
                       "road_a": tunnel, "road_b": under})
-    add_items(plan_path, plan_name, roads=roads, junctions=juncs)
+    add_items(plan_path, plan_name, roads=roads, junctions=juncs, cards={number: {"text": f"{number} {name}"}})
     print(f"Added to {plan_name!r}: {name} as step {number}: {piece} under {under}, a {2 * half:,.0f} m tunnel about "
           f"{opt('--depth', 13)} m down with {'; '.join(notes)}.\nCheck it: plan.py check {Path(plan_path).name} <src>.")
     return 0
@@ -1852,18 +1919,17 @@ def main_interchange(plan_path, snap, rest, opt):
             raise SystemExit(f"The street must run at least {F:,.0f} m on both sides of {ex['name']} for the frontage streets.")
         sa, sb = max(near), min(far)
         ramp = min(hit[0] - half - sa, sb - hit[0] - half)
-        tag = f"{number} {name}"
         street_piece = under_piece(edges, opt("--street-piece"), piece, notes)
-        under, tunnel, un = under_items(line, hit[0], half, ramp, depth, street_piece, road_class_of(edges) if edges else "Arterial", tag, ex["name"])
+        under, tunnel, un = under_items(line, hit[0], half, ramp, depth, street_piece, road_class_of(edges) if edges else "Arterial", number, ex["name"])
         roads += under + [ex]
         notes += un
-        juncs.append({"name": f"{tag}, interchange", "type": "Interchange", "position": [round(hit[2], 1), round(hit[3], 1)],
+        juncs.append({"name": f"{number} Interchange", "type": "Interchange", "position": [round(hit[2], 1), round(hit[3], 1)],
                       "road_a": tunnel, "road_b": ex["name"]})
         Lf = float(opt("--frontage-length", 260))
         fr_piece = opt("--frontage-piece", "Two-Lane Road")
         for side in (1.0, -1.0):
             word = hw.left_word(s_c) if side > 0 else sv.direction(*[-v for v in sv_left(hw, s_c)])
-            roads.append({"name": f"{nb(1)} {name}, {word} frontage street", "class": "Collector", "piece": fr_piece,
+            roads.append({"name": f"{nb(1)} {word.capitalize()} frontage", "class": "Collector", "piece": fr_piece,
                           "points": [[round(x, 1), round(z, 1)] for x, z in hw.line(s_c - Lf, s_c + Lf, side * F, step=40.0)]})
         # slip roads, in the direction they're driven: off before the crossing, on after it, each on its traffic side
         P = lambda s_, t_: [round(v, 1) for v in hw.point(s_c + s_, t_)]
@@ -1871,12 +1937,14 @@ def main_interchange(plan_path, snap, rest, opt):
         for direction, word in ((1.0, plus), (-1.0, minus)):
             t = R * direction
             g = lambda s_: s_ * direction
-            roads.append({"name": f"{nb(2)} {name}, {word}-bound off-ramp", "class": "Highway", "piece": SLIP,
+            roads.append({"name": f"{nb(2)} Off-ramp, {COMPASS_SHORT.get(word, word)}-bound", "class": "Highway", "piece": SLIP,
                           "points": [P(g(-320), t * 8), P(g(-170), t * 30), P(g(-110), t * F)]})
-            roads.append({"name": f"{nb(2)} {name}, {word}-bound on-ramp", "class": "Highway", "piece": SLIP,
+            roads.append({"name": f"{nb(2)} On-ramp, {COMPASS_SHORT.get(word, word)}-bound", "class": "Highway", "piece": SLIP,
                           "points": [P(g(110), t * F), P(g(170), t * 30), P(g(320), t * 8)]})
         summary = (f"{name}: the street under {ex['name']} (step {number}), frontage streets {F:,.0f} m out (step {nb(1)}), "
                    f"four slip roads (step {nb(2)})")
+        cards = {number: {"text": f"{number} {name}: under {ex['name']}"}, nb(1): {"text": f"{nb(1)} {name}: frontage streets"},
+                 nb(2): {"text": f"{nb(2)} {name}: slip roads"}}
     else:
         if not opt("--from"):
             raise SystemExit("a stem needs --from PLACE: where the road comes from, on one side of the highway")
@@ -1888,32 +1956,32 @@ def main_interchange(plan_path, snap, rest, opt):
         if abs(t0) < J + ramp:
             raise SystemExit(f"--from is {abs(t0):,.0f} m from the highway: the stem needs {J + ramp:,.0f} m on its side.")
         stem = line_part([hw.point(s_c, t0), hw.point(s_c, -side * J)])
-        tag = f"{number} {name}"
         L = stem.length
         end = depth - 1
-        mk = lambda role, s0, s1, extra: dict({"name": f"{tag}, {role}", "class": "Arterial", "piece": piece,
+        mk = lambda role, s0, s1, extra: dict({"name": f"{number} {role}", "class": "Arterial", "piece": piece,
                                                "points": [[round(x, 1), round(z, 1)] for x, z in stem.line(s0, s1, step=30.0)]}, **extra)
         a = L - 2 * J - ramp
         if a > 1:
-            roads.append(mk("approach", 0, a, {}))
-        roads += [mk("down-ramp", a, L - 2 * J, {"depth": [0, end]}), mk(f"tunnel under {ex['name']}", L - 2 * J, L, {"tunnel": True, "depth": depth})]
+            roads.append(mk("Approach", 0, a, {}))
+        roads += [mk("Down-ramp", a, L - 2 * J, {"depth": [0, end]}), mk("Tunnel", L - 2 * J, L, {"tunnel": True, "depth": depth})]
         notes.append(f"ramp of {ramp:,.0f} m at {end / ramp:.0%}")
         jn, jf = hw.point(s_c, side * J), hw.point(s_c, -side * J)
         roads.append(ex)
         for label, pt in (("near", jn), ("far", jf)):
-            juncs.append({"name": f"{tag}, {label} underground junction", "type": "Normal", "position": [round(pt[0], 1), round(pt[1], 1)],
+            juncs.append({"name": f"{number} {label.capitalize()} junction", "type": "Normal", "position": [round(pt[0], 1), round(pt[1], 1)],
                           "road_a": roads[-2]["name"], "road_b": ex["name"], "piece": "stop signs or none (take the game's lights off)"})
         P = lambda s_, t_: [round(v, 1) for v in hw.point(s_c + s_, t_)]
         plus, minus = hw.heading_word(), sv.direction(*[-(hw.pts[-1][i] - hw.pts[0][i]) for i in (0, 1)])
         for direction, word in ((1.0, plus), (-1.0, minus)):
             t = R * direction
             g = lambda s_: s_ * direction
-            roads.append({"name": f"{nb(1)} {name}, {word}-bound off-ramp", "class": "Highway", "piece": SLIP, "depth": [0, depth],
+            roads.append({"name": f"{nb(1)} Off-ramp, {COMPASS_SHORT.get(word, word)}-bound", "class": "Highway", "piece": SLIP, "depth": [0, depth],
                           "points": [P(g(-260), t * 8), P(g(-120), t * 22), P(g(-35), t * J), P(0, t * J)]})
-            roads.append({"name": f"{nb(1)} {name}, {word}-bound on-ramp", "class": "Highway", "piece": SLIP, "depth": [depth, 0],
+            roads.append({"name": f"{nb(1)} On-ramp, {COMPASS_SHORT.get(word, word)}-bound", "class": "Highway", "piece": SLIP, "depth": [depth, 0],
                           "points": [P(0, t * J), P(g(35), t * J), P(g(120), t * 22), P(g(260), t * 8)]})
         summary = f"{name}: the stem under {ex['name']} (step {number}), four slip roads down to its underground junctions (step {nb(1)})"
-    add_items(plan_path, plan_name, roads=roads, junctions=juncs)
+        cards = {number: {"text": f"{number} {name}: under {ex['name']}"}, nb(1): {"text": f"{nb(1)} {name}: slip roads"}}
+    add_items(plan_path, plan_name, roads=roads, junctions=juncs, cards=cards)
     print(f"Added to {plan_name!r}: {summary}; {'; '.join(notes)}; {'left' if left else 'right'}-hand traffic.\n"
           f"Check it: plan.py check {Path(plan_path).name} <src>, then look at it: plan.py draw … --around \"{roads[0]['name']}\".")
     return 0
@@ -1944,7 +2012,7 @@ def main_grid(plan_path, snap, rest, opt):
         raise SystemExit(f"--start must be between 0 and the street's length ({L:.0f} m)")
     roads, area = make_grid(origin, u, L, spine_w, side, int(rows), start, along, opt("--piece", "Two-Lane Road"),
                             opt("--ends", "both"), float(opt("--block")) if opt("--block") else None,
-                            opt("--number"), opt("--name", "New streets"), opt("--zone"))
+                            opt("--number"), opt("--name", "Grid"), opt("--zone"))
     plan_name = opt("--plan", "Now · New streets")
     add_to_plan(plan_path, plan_name, roads, area)
     first = roads[0]["points"]
@@ -2036,7 +2104,8 @@ def card_note(items):
     metres = Counter()
     for kind, it in items:
         if kind == "roads" and it.get("depth") is not None:
-            role = str(it.get("name") or "").split(", ", 1)[-1] if ", " in str(it.get("name") or "") else ""
+            rest = re.sub(r"^\s*\d+[a-z]?\b\s*", "", str(it.get("name") or ""))
+            role = rest.split(", ", 1)[1] if ", " in rest else rest
             L = length(item_points(it))
             what = ", ".join(x for x in ((piece_of(it) or "road") + (" in a tunnel" if it.get("tunnel") else ""),
                                          f"about {round(L, -1) if L >= 100 else round(L):,.0f} m", depth_words(it.get("depth"))) if x)
@@ -2406,11 +2475,38 @@ def main_ship(plan_path, src, rest, opt):
         by_plan[p.get("name")].append({"number": n, "id": f"c-{slug(n)}", "text": text, "note": str(given.get("note") or card_note(items)),
                                        "done": done, "picture": file, "items": names,
                                        "where": {"label": text[:60], "x": round(x), "z": round(z), "zoom": int(zoom)}})
-    # 4. export the guide, then put this city's older guides away
+    # 4. export the guide in the journal's order (Now, Next, Later, Base, Done; then the projects' priority), then put
+    # this city's older guides away; the plan file itself stays as it is
+    prio = {}
+    for f in sorted((srcp / "projects").glob("*.md")):
+        try:
+            meta = tomllib.loads(split_page(f.read_text(encoding="utf-8"))[0])
+        except (SystemExit, Exception):
+            continue
+        for pl in arr(meta.get("plans")):
+            for layer in (pl.get("layers") or []) if isinstance(pl, dict) else []:
+                prio.setdefault(layer, meta.get("priority", 9) if isinstance(meta.get("priority"), (int, float)) else 9)
+    rank = {w: i for i, w in enumerate(cityplan.STATUSES)}
+    # the planner gets the session's rows (Now, Next, and Done for one round); Later and Base stay in the plan file, the
+    # City Manager's long-term picture (pictures, the long-term check), unless --with-later
+    with_later = "--with-later" in rest
+    session_row = lambda name: with_later or status_of(name) not in ("Later", "Base")
+    left_out = [q.get("name") for q in plans if isinstance(q, dict) and not session_row(q.get("name"))]
     if not dry:
+        import tempfile
+        raw = json.loads(Path(plan_path).read_text(encoding="utf-8-sig"))
+        listed = [q for q in (raw["plans"] if isinstance(raw.get("plans"), list) else [raw])
+                  if not isinstance(q, dict) or session_row(q.get("name"))]
+        ordered = sorted(enumerate(listed), key=lambda iq: (rank.get(status_of(iq[1].get("name")), 9) if isinstance(iq[1], dict) else 9,
+                                                            prio.get(iq[1].get("name"), 9) if isinstance(iq[1], dict) else 9, iq[0]))
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as tf:
+            json.dump(dict(raw, plans=[q for _, q in ordered]) if isinstance(raw.get("plans"), list) else raw, tf, ensure_ascii=False)
         out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            cityplan.cmd_export([str(plan_path), "--name", guide, "--map-id", str(map_id), "--terrain", str(snap_path)])
+        try:
+            with contextlib.redirect_stdout(out):
+                cityplan.cmd_export([tf.name, "--name", guide, "--map-id", str(map_id), "--terrain", str(snap_path)])
+        finally:
+            os.unlink(tf.name)
         new = exports / f"{guide}.cityplan.json"
         for _, f in guides:
             if f.parent == exports and f != new:
@@ -2436,13 +2532,35 @@ def main_ship(plan_path, src, rest, opt):
             ship_project(f, guide, city_name, name, cards, state)
         touched.append((f, name, len(steps), sum(1 for st in steps if st["done"]), created))
         left += [(f.name, n) for n in shared]
+    # the journal and the planner say the same thing: a project's title is its plan row's topic, one live row each
+    lineup = []
+    for f in sorted((srcp / "projects").glob("*.md")):
+        try:
+            meta = tomllib.loads(split_page(f.read_text(encoding="utf-8"))[0])
+        except (SystemExit, Exception):
+            continue
+        rows = [l for pl in arr(meta.get("plans")) if isinstance(pl, dict) for l in (pl.get("layers") or [])]
+        live = [l for l in rows if status_of(l) in ("Now", "Next")]
+        title = str(meta.get("title") or "")
+        if len(live) > 1:
+            lineup.append(f"{f.name} has {len(live)} Now and Next plan rows ({', '.join(live)}): one project, one row")
+        for l in live:
+            topic = l.split(" · ", 1)[1] if " · " in l else l
+            if title and topic.casefold() != title.casefold():
+                lineup.append(f"{f.name} is titled \"{title}\" but its plan row says \"{topic}\": use the same words on both")
     relinked = 0
     link = re.compile(r'^(\s*name\s*=\s*)"' + re.escape(city_name) + r' \d+"', re.M | re.I)
     for f in sorted((srcp / "projects").glob("*.md")):
-        if f in [t[0] for t in touched]:
-            continue
         text = f.read_text(encoding="utf-8")
-        new_text = link.sub(lambda m: m.group(1) + json.dumps(guide, ensure_ascii=False), text)
+        new_text = text
+        if left_out:   # a link to a row the planner no longer gets goes (the project keeps its words and steps)
+            try:
+                front, body = split_page(text)
+                new_text = "+++\n" + layer_rewrite(front, {}, set(left_out)) + body
+            except SystemExit:
+                pass
+        if f not in [t[0] for t in touched]:
+            new_text = link.sub(lambda m: m.group(1) + json.dumps(guide, ensure_ascii=False), new_text)
         if new_text != text:
             relinked += 1
             if not dry:
@@ -2469,7 +2587,12 @@ def main_ship(plan_path, src, rest, opt):
     for fname, n in left:
         print(f"- {fname}: two steps start with {n}, so ship left them as they are (number them {n}a, {n}b to give each a card).")
     if relinked:
-        print(f"- {relinked} other project{'s' if relinked != 1 else ''} now link{'s' if relinked == 1 else ''} to {guide}.")
+        print(f"- {relinked} project page{'s' if relinked != 1 else ''} relinked to {guide}.")
+    if left_out:
+        print(f"- In the plan file, not in the planner: {', '.join(left_out)} (the long-term picture: draw it for the City plan "
+              "project's page; `--with-later` puts these rows in the guide too).")
+    for x in lineup:
+        print(f"- Journal and planner: {x}.")
     if not dry:
         print("- Journal: " + ("built." if built_ok else "NOT built:\n" + build_out))
     print(f"\nFor the briefing: \"In the planner, Import latest file ({guide})\", then build from the Now plans.")

@@ -125,7 +125,10 @@ say how to add it in the Paradox Launcher.
 ## 5. The first plan, now (`backbone`)
 
 Follow `backbone.md` with the city's start snapshot (`city-start.json`, taken when it first loaded): the survey, the
-proposal in plain words and pictures, and **stop for the Mayor's approval**. Then, with `drafts`, export the guide as
+proposal in plain words and pictures, and **stop for the Mayor's approval**. The proposal shows the whole map as a
+picture with its goals, but the plan for tonight is the opening area only, plus a road or two toward the main goal
+(`backbone.md` § 4): the whole-map plan stays in the plan file and reaches the Mayor as the City plan project's
+picture and goals. Then, with `drafts`, export the guide as
 `<City> 1`, passing the city's name as the planner's map id (`plan.py ship plan.json <city>/journal --map-id
 "<City>"`, which also writes the build cards into the projects), so the planner doesn't need opening first; in game the Mayor opens City
 Planning Draft and presses **Import latest file**.

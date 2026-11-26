@@ -256,7 +256,7 @@ test("ids that match Object's built-ins draw as plain data", () => {
     const j = { projects: [{ id: "constructor", title: "C", status: "constructor", scale: "constructor", steps: [] }], replies: {} };
     const mayor = { notes: [{ id: "constructor", at: "2026-11-24T19:00:00Z", text: "my note" }], status: {}, ticks: {} };
     const list = text(render(h(T.ProjectList, { j, mayor, onOpen: () => {} })));
-    assert.ok(list.includes("In progress") && list.includes("constructor"), list);
+    assert.ok(list.includes("Now") && list.includes("constructor"), list);
     const notes = text(render(h(T.NotesTab, { j, mayor })));
     assert.ok(notes.includes("my note") && !notes.includes("City Manager ·"), notes);
 });
@@ -452,6 +452,21 @@ test("In planner: City Planning Draft shows the step's plan while the Mayor buil
         const page = text(h(T.ProjectDetail, { j, mayor: {}, ctx: CTX, id: "fs", onBack: () => {} }));
         assert.match(page, /Show Now · First streets/);
         assert.match(page, /1 Main linkIn planner/, "a step gets In planner when its project links a plan");
+        assert.doesNotMatch(page, /Next step/, "its only step has no place, so there's nowhere to go");
+        const j2 = { projects: [{ id: "fs", title: "First streets", status: "active", plans: [{ kind: "draft", name: "Riverton 3", layers: ["Now · First streets"] }],
+                                  steps: [{ id: "c-1", text: "1 Main link", where: { x: 1, z: 2 } }, { id: "c-2", text: "2 West lane", where: { x: 30, z: 40, zoom: 400 } }] }] };
+        const ticked = { ticks: { "p:fs/c-1": { done: true, at: "2099-01-01T00:00:00Z" } } };
+        const tree = render(h(T.ProjectDetail, { j: j2, mayor: ticked, ctx: CTX, id: "fs", onBack: () => {} }));
+        assert.match(text(tree), /Next step: 2 West lane/, "a ticked step is passed over");
+        const next = [];
+        const walk2 = (n) => { if (n && typeof n === "object") { if (n.props && n.props.onClick && text(n).startsWith("Next step")) next.push(n); (n.children || []).forEach(walk2); } };
+        walk2(tree);
+        calls.length = 0;
+        next[0].props.onClick();
+        assert.deepEqual(calls.map((c) => c[1]), ["flyTo"], "without the planner's state it flies there (the state stub is empty)");
+        assert.deepEqual(calls[0], ["cityManager", "flyTo", 30, 40, 400]);
+        const none = text(h(T.ProjectDetail, { j: { projects: [{ id: "x", title: "X", steps: [{ id: "a", text: "no place" }] }] }, mayor: {}, ctx: CTX, id: "x", onBack: () => {} }));
+        assert.doesNotMatch(none, /Next step/, "no button when no step has a place");
     } finally {
         api.trigger = before;
     }

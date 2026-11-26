@@ -32,6 +32,7 @@ id = "roads"                       # stable: the Mayor's ticks are keyed by it
 title = "City roads & road hierarchy"
 scale = "city"                     # city | district | street | building | system
 status = "active"                  # active | next | idea | hold | done (force_status = true overrules the Mayor's status once)
+                                   # the panel shows Now, Next, Later, On hold, Done: the planner's row words
 priority = 1                       # 1 = most important; sorts lists and "On your plate"
 summary = "Two or three plain sentences."
 where = { label = "The Gateway", x = -70, z = -420, zoom = 700 }   # for "Show on map"

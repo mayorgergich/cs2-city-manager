@@ -162,16 +162,16 @@ class Templates(Builders):
         self.assertEqual(code, 0, out)
         self.assertIn("a 40 m tunnel about 13 m down with ramps of 100 m at 12%", out)
         it = self.items()
-        down, tunnel, up = it["3 Old Lane under the ring, down-ramp"], it["3 Old Lane under the ring, tunnel under Ring Highway"], it["3 Old Lane under the ring, up-ramp"]
+        down, tunnel, up = it["3 Down-ramp"], it["3 Tunnel"], it["3 Up-ramp"]
         self.assertEqual((down["points"][0], down["points"][-1]), ([400.0, 180.0], [400.0, 280.0]))
         self.assertEqual((tunnel["points"][0], tunnel["points"][-1], tunnel["tunnel"], tunnel["depth"]), ([400.0, 280.0], [400.0, 320.0], True, 13.0))
         self.assertEqual((down["depth"], up["depth"]), ([0, 12.0], [12.0, 0]))
-        j = it["3 Old Lane under the ring, under Ring Highway"]
+        j = it["3 Underpass"]
         self.assertEqual((j["type"], j["position"], j["road_b"]), ("Underpass", [400.0, 300.0], "Ring Highway"))
         self.assertTrue(it["Ring Highway"]["existing"])
         note = plan.card_note([("roads", down), ("roads", tunnel), ("roads", up), ("junctions", j)])
-        self.assertEqual(note, "Down-ramp: Two-Lane Road, about 100 m, down to 12 m; tunnel under Ring Highway: Two-Lane Road in a tunnel, "
-                               "about 40 m, about 13 m down; up-ramp: Two-Lane Road, about 100 m, up from 12 m; an underpass",
+        self.assertEqual(note, "Down-ramp: Two-Lane Road, about 100 m, down to 12 m; Tunnel: Two-Lane Road in a tunnel, "
+                               "about 40 m, about 13 m down; Up-ramp: Two-Lane Road, about 100 m, up from 12 m; an underpass",
                          "the build card says each piece's depth")
         code, out = self.run_plan("check", self.plan, self.snap)
         self.assertNotIn("joins Ring Highway at grade", out, "the tunnel passes under, it doesn't join")
@@ -180,7 +180,7 @@ class Templates(Builders):
         code, out = self.run_plan("underpass", self.plan, self.snap, "--plan", "Now · Streets", "--number", "4", "--name", "Rail dip",
                                   "--under", "Double Train Track", "--through", "100,-300", "400,-300")
         self.assertEqual(code, 0, out)
-        tunnel = self.items()["4 Rail dip, tunnel under Double Train Track"]
+        tunnel = self.items()["4 Tunnel"]
         self.assertEqual((tunnel["points"][0][0], tunnel["points"][-1][0]), (235.0, 265.0), "15 m either side of the track at x 250")
         code, out = self.run_plan("underpass", self.plan, self.snap, "--plan", "Now · Streets", "--number", "5", "--name", "Too steep",
                                   "--under", "Double Train Track", "--through", "100,-300", "400,-300", "--ramp", "50")
@@ -193,10 +193,12 @@ class Templates(Builders):
         code, out = self.run_plan("tunnel", self.plan, self.snap, "--plan", "Now · Streets", "--number", "6", "--name", "Harbour tunnel",
                                   "--through", "Main Street@0+100", "Main Street@300+100", "--depth", "20", "--ramp", "120")
         self.assertEqual(code, 0, out)
-        it = self.roads("6 Harbour tunnel")
-        self.assertEqual(sorted(it), ["6 Harbour tunnel, down-ramp", "6 Harbour tunnel, tunnel", "6 Harbour tunnel, up-ramp"])
-        self.assertEqual(it["6 Harbour tunnel, tunnel"]["depth"], 20.0)
-        self.assertEqual(it["6 Harbour tunnel, down-ramp"]["depth"], [0, 19.0])
+        it = self.roads("6 ")
+        self.assertEqual(sorted(it), ["6 Down-ramp", "6 Tunnel", "6 Up-ramp"])
+        self.assertEqual(it["6 Tunnel"]["depth"], 20.0)
+        self.assertEqual(it["6 Down-ramp"]["depth"], [0, 19.0])
+        cards = json.loads(self.plan.read_text(encoding="utf-8"))["plans"][0]["cards"]
+        self.assertEqual(cards["6"], {"text": "6 Harbour tunnel"}, "the template's name becomes the journal step's words")
 
     def test_diamond_interchange(self):
         code, out = self.run_plan("interchange", self.plan, self.snap, "--plan", "Now · Streets", "--kind", "diamond", "--number", "7",
@@ -206,27 +208,29 @@ class Templates(Builders):
         self.assertIn("right-hand traffic", out)
         self.assertIn("the street is a Gravel Road, which can't go underground: the underpass uses a Four-Lane Road", out)
         it = self.items()
-        self.assertEqual(it["7 Old Lane junction, tunnel under Ring Highway"]["piece"], "Four-Lane Road")
+        self.assertEqual(it["7 Tunnel"]["piece"], "Four-Lane Road")
         ramps = {k: v for k, v in it.items() if k.startswith("9 ")}
-        self.assertEqual(sorted(ramps), ["9 Old Lane junction, east-bound off-ramp", "9 Old Lane junction, east-bound on-ramp",
-                                         "9 Old Lane junction, west-bound off-ramp", "9 Old Lane junction, west-bound on-ramp"])
-        off = ramps["9 Old Lane junction, east-bound off-ramp"]["points"]
+        self.assertEqual(sorted(ramps), ["9 Off-ramp, E-bound", "9 Off-ramp, W-bound", "9 On-ramp, E-bound", "9 On-ramp, W-bound"])
+        self.assertTrue(all(len(n) <= plan.ITEM_NAME_MAX for n in it), sorted(it))
+        off = ramps["9 Off-ramp, E-bound"]["points"]
         self.assertEqual((off[0], off[-1]), ([80.0, 292.0], [290.0, 210.0]),
                          "east-bound traffic drives on the south side: it leaves 320 m before the crossing, meets the frontage street 90 m south")
-        on = ramps["9 Old Lane junction, west-bound on-ramp"]["points"]
+        on = ramps["9 On-ramp, W-bound"]["points"]
         self.assertEqual(on[-1], [80.0, 308.0], "west-bound joins after the crossing, west of it, on the north side")
         self.assertTrue(all(v["piece"] == "One-Lane One-Way Highway" and v["class"] == "Highway" for v in ramps.values()))
         fronts = {k: v for k, v in it.items() if k.startswith("8 ")}
-        self.assertEqual(sorted(fronts), ["8 Old Lane junction, north frontage street", "8 Old Lane junction, south frontage street"])
-        self.assertEqual(it["7 Old Lane junction, tunnel under Ring Highway"]["points"][0][1], 280.0)
-        j = it["7 Old Lane junction, interchange"]
+        self.assertEqual(sorted(fronts), ["8 North frontage", "8 South frontage"])
+        self.assertEqual(it["7 Tunnel"]["points"][0][1], 280.0)
+        j = it["7 Interchange"]
+        cards = json.loads(self.plan.read_text(encoding="utf-8"))["plans"][0]["cards"]
+        self.assertEqual(cards["9"], {"text": "9 Old Lane junction: slip roads"})
         self.assertEqual((j["type"], j["position"]), ("Interchange", [400.0, 300.0]))
         snap = json.loads(self.snap.read_text(encoding="utf-8"))
         snap["map"] = {"leftHandTraffic": True}
         self.snap.write_text(json.dumps(snap), encoding="utf-8")
         self.run_plan("interchange", self.plan, self.snap, "--plan", "Now · Streets", "--kind", "diamond", "--number", "7",
                       "--name", "Old Lane junction", "--highway", "Ring Highway", "--street", "Old Lane")
-        off = self.items()["9 Old Lane junction, east-bound off-ramp"]["points"]
+        off = self.items()["9 Off-ramp, E-bound"]["points"]
         self.assertEqual(off[-1], [290.0, 390.0], "left-hand traffic: the ramps are mirrored")
 
     def test_underground_stem(self):
@@ -234,10 +238,10 @@ class Templates(Builders):
                                   "--name", "Freight stem", "--highway", "Ring Highway", "--from", "Old Lane@0")
         self.assertEqual(code, 0, out)
         it = self.items()
-        self.assertEqual(it["10 Freight stem, tunnel under Ring Highway"]["points"][-1], [400.0, 332.0], "to 32 m past the centre line")
-        self.assertEqual(it["10 Freight stem, near underground junction"]["position"], [400.0, 268.0])
-        self.assertEqual(it["11 Freight stem, east-bound off-ramp"]["points"][-1], [400.0, 268.0], "east-bound drops to the south junction")
-        self.assertEqual(it["11 Freight stem, west-bound on-ramp"]["points"][0], [400.0, 332.0])
+        self.assertEqual(it["10 Tunnel"]["points"][-1], [400.0, 332.0], "to 32 m past the centre line")
+        self.assertEqual(it["10 Near junction"]["position"], [400.0, 268.0])
+        self.assertEqual(it["11 Off-ramp, E-bound"]["points"][-1], [400.0, 268.0], "east-bound drops to the south junction")
+        self.assertEqual(it["11 On-ramp, W-bound"]["points"][0], [400.0, 332.0])
         code, out = self.run_plan("interchange", self.plan, self.snap, "--plan", "Now · Streets", "--kind", "stem", "--number", "12",
                                   "--name", "Too close", "--highway", "Ring Highway", "--from", "400,250")
         self.assertIn("the stem needs 132 m on its side", out)

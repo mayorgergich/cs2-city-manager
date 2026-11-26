@@ -99,7 +99,7 @@ EXPORTS = ROOT.parent / "CityPlanningDraft/Exports"   # the City Planning Draft 
 
 FORMAT = 1
 STATUSES = ["active", "next", "idea", "hold", "done"]
-STATUS_LABEL = {"active": "In progress", "next": "Up next", "idea": "Idea", "hold": "On hold", "done": "Done"}
+STATUS_LABEL = {"active": "Now", "next": "Next", "idea": "Later", "hold": "On hold", "done": "Done"}   # the planner's words
 SCALES = ["city", "district", "street", "building", "system"]
 JOURNAL_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 DATE_ID = re.compile(r"\d{4}-\d\d-\d\d(-\d{1,2})?")

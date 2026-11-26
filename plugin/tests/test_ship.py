@@ -118,7 +118,9 @@ class Ship(Base):
         self.assertIn("# Shipped: Riverton 2", out)
         guide = json.loads((self.exports / "Riverton 2.cityplan.json").read_text(encoding="utf-8"))
         self.assertEqual(guide["map_id"], "riverton-map", "the map id comes from the city's last guide, never another city's")
-        self.assertEqual(len(guide["plans"]), 4, "the guide has every layer, Later and Base included")
+        self.assertEqual([q["name"] for q in guide["plans"]], ["Now · Streets", "Next · Homes"],
+                         "the planner gets the session's rows; Later and Base stay in the plan file")
+        self.assertIn("- In the plan file, not in the planner: Later · Far off, Base · Roads", out)
         self.assertTrue((self.exports / "old/Riverton 1.cityplan.json").exists(), "the city's older guide is put away")
         self.assertTrue((self.exports / "Other Town 3.cityplan.json").exists(), "another city's guide stays where it is")
 
@@ -150,12 +152,19 @@ class Ship(Base):
         self.assertTrue((self.src / "images/card-4-homes.png").exists())
         self.assertNotIn("20 Far road", out + text, "Later plans get no build cards")
         city_plan, _ = self.page("city-plan.md")
-        self.assertEqual(city_plan["plans"][0]["name"], "Riverton 2", "every project's link follows the new guide")
-        self.assertIn("1 other project now links to Riverton 2", out)
+        self.assertNotIn("plans", city_plan, "its only link was to Base · Roads, which the planner no longer gets")
+        self.assertIn("1 project page relinked to Riverton 2", out)
 
         journal = json.loads((self.root / "riverton/journal.json").read_text(encoding="utf-8"))
         ids = {p["id"]: [s["id"] for s in p["steps"]] for p in journal["projects"]}
         self.assertEqual(ids["streets"], ["main", "c-2", "lights"], "and the journal is built")
+
+    def test_with_later_puts_the_long_term_rows_in(self):
+        code, out = self.ship("--with-later")
+        self.assertEqual(code, 0, out)
+        guide = json.loads((self.exports / "Riverton 2.cityplan.json").read_text(encoding="utf-8"))
+        self.assertEqual([q["name"] for q in guide["plans"]], ["Now · Streets", "Next · Homes", "Later · Far off", "Base · Roads"])
+        self.assertEqual(self.page("city-plan.md")[0]["plans"][0]["name"], "Riverton 2", "its link stays and follows the guide")
 
     def test_shipping_again_keeps_ids_and_ticks(self):
         self.assertEqual(self.ship()[0], 0)

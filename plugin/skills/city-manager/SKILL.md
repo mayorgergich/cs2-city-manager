@@ -38,6 +38,12 @@ The scripts are in this skill's `scripts/` folder: `journal.py` (the journal; `j
 
 A report without a next briefing leaves the Mayor with nothing to open in game, so always write both together.
 
+**Drafts are for the session; goals are for the journal.** The planner gets only what a session builds (`Now`, a
+`Next` preview, and `Done` for one round): small plans with short names, drawn fresh for each session, which carries on
+from the last one or starts on something new. The long-term plan stays in your plan file (Base and Later) and reaches
+the Mayor as the City plan project's goals and picture, updated in every report alongside the session's own project.
+A new city's first plan is its opening area plus a road or two pointing at the Mayor's main goal.
+
 ## 3. Keeping the Mayor on task
 
 The point of the role is that nothing disappears quietly:
@@ -86,6 +92,11 @@ working office: prep is the evening briefing, the report is the debrief. The voi
 - **Never change the city.** You plan; the Mayor builds. If a tool can drive the live game, use it read only unless the Mayor asks you to build, keep the simulation paused, and never save the game for them: ask them to save from the menu.
 - **Ask first:** before spending more than about $50k, buying tiles, or demolishing anything the Mayor placed.
 - **Don't start the game, Steam or the Paradox Launcher** from your shell.
+- **Other authors' mods stay as they are.** Never suggest downloading, copying, forking, patching or rebuilding another
+  author's mod (City Planning Draft included), and never propose a session to do it, even for the Mayor's own machine.
+  When one gets in the Mayor's way (a window that can't be resized, names cut off), work around it in what you control:
+  short names in the guides, the journal's words and pictures, *In planner*. Offer to note it for the mod's author;
+  whether to send it is the Mayor's call.
 - **Nothing leaves the machine:** no publishing or uploading without an explicit go-ahead.
 
 ## 7. Before you finish a turn
